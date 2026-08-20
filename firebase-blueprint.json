@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "CompanySettings": {
+      "title": "Company Settings",
+      "description": "Global company settings",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "paymentAccounts": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    },
+    "Client": {
+      "title": "Client",
+      "description": "A client that can be billed",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "address": { "type": "string", "maxLength": 500 },
+        "email": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "An invoice record",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientAddress": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "vatRate": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "currency": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["unpaid", "paid"] },
+        "paymentNotes": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "paidAt": { "type": "string" }
+      },
+      "required": ["invoiceNumber", "clientId", "status", "grandTotal", "createdAt", "createdBy"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/CompanySettings" },
+      "description": "Company settings"
+    },
+    "/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Clients list"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "Invoices"
+    }
+  }
+}

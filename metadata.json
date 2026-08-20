@@ -1,0 +1,6 @@
+{
+  "name": "Green Collar Invoice Portal",
+  "description": "An administrative invoice generation portal for Green Collar Integrated Services.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

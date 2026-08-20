@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return true; }
+    function isAdmin() { return true; }
+    function isAuthorized() { return true; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-.@]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidUser(data) {
+       return data.keys().hasAll(['username', 'name', 'role', 'pin', 'createdAt']) &&
+              data.username is string && data.username.size() <= 100 &&
+              data.name is string && data.name.size() <= 100 &&
+              data.role is string && data.role.matches('^(admin|sales)$') &&
+              data.pin is string && data.pin.size() <= 50 &&
+              data.createdAt is string;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthorized();
+      allow create: if isAdmin() && isValidId(userId) && isValidUser(incoming());
+      allow update: if isAdmin() && isValidUser(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+
+    function isValidSettings(data) {
+       return data.keys().hasAll(['name', 'address']) &&
+              data.keys().size() <= 6 &&
+              data.name is string && data.name.size() <= 100 &&
+              data.address is string && data.address.size() <= 500 &&
+              data.get('email', '') is string && data.get('email', '').size() <= 100 &&
+              data.get('phone', '') is string && data.get('phone', '').size() <= 50 &&
+              data.get('logoUrl', '') is string && data.get('logoUrl', '').size() <= 1000 &&
+              (data.get('paymentAccounts', []) is list && data.get('paymentAccounts', []).size() <= 10);
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthorized();
+      allow create: if isAdmin() && isValidId(settingId) && isValidSettings(incoming());
+      allow update: if isAdmin() && isValidSettings(incoming());
+    }
+
+    function isValidClient(data) {
+      return data.keys().hasAll(['name', 'createdAt']) &&
+             data.keys().size() <= 6 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             data.get('address', '') is string && data.get('address', '').size() <= 500 &&
+             data.get('email', '') is string && data.get('email', '').size() <= 100 &&
+             data.get('phone', '') is string && data.get('phone', '').size() <= 50;
+    }
+
+    match /clients/{clientId} {
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidId(clientId) && isValidClient(incoming());
+      allow update: if isAuthorized() && isValidClient(incoming());
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['invoiceNumber', 'clientId', 'status', 'grandTotal', 'createdAt', 'createdBy']) &&
+             data.keys().size() <= 20 &&
+             data.invoiceNumber is string && data.invoiceNumber.size() <= 50 &&
+             data.clientId is string && data.clientId.size() <= 128 &&
+             data.status is string && data.status.matches('^(unpaid|paid)$') &&
+             data.grandTotal is number &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             data.createdBy is string && data.createdBy.size() <= 128 &&
+             data.get('clientName', '') is string && data.get('clientName', '').size() <= 100 &&
+             data.get('clientAddress', '') is string && data.get('clientAddress', '').size() <= 500 &&
+             data.get('items', []) is list && data.get('items', []).size() <= 100 &&
+             data.get('subtotal', 0) is number &&
+             data.get('vatRate', 0) is number &&
+             data.get('vatAmount', 0) is number &&
+             data.get('currency', 'NGN') is string && data.get('currency', 'NGN').size() <= 10 &&
+             data.get('issueDate', '') is string && data.get('issueDate', '').size() <= 50 &&
+             data.get('dueDate', '') is string && data.get('dueDate', '').size() <= 50 &&
+             data.get('paymentNotes', '') is string && data.get('paymentNotes', '').size() <= 2000 &&
+             data.get('paidAt', '') is string && data.get('paidAt', '').size() <= 50 &&
+             data.get('createdByEmail', '') is string && data.get('createdByEmail', '').size() <= 100;
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidId(invoiceId) && isValidInvoice(incoming());
+      allow update: if isAuthorized() && isValidInvoice(incoming()) && (
+        isAdmin() || 
+        (existing().status == 'unpaid' && incoming().status == 'unpaid' && existing().createdBy == incoming().createdBy)
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}
