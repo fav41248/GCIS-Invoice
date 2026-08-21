@@ -345,7 +345,7 @@ export default function InvoiceGenerator() {
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}
                     className="w-full h-full object-contain" 
-                    referrerPolicy="no-referrer" 
+                    referrerPolicy="no-referrer" crossOrigin="anonymous" 
                     onError={(e) => { 
                       e.currentTarget.src = 'https://picsum.photos/seed/gcis_logo/150/150'; 
                     }} 
@@ -520,7 +520,7 @@ export default function InvoiceGenerator() {
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}
                     className="w-full h-full object-contain" 
-                    referrerPolicy="no-referrer" 
+                    referrerPolicy="no-referrer" crossOrigin="anonymous" 
                     onError={(e) => { 
                       e.currentTarget.src = 'https://picsum.photos/seed/gcis_logo/150/150'; 
                     }} 

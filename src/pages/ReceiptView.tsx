@@ -81,7 +81,7 @@ export default function ReceiptView() {
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt="Logo" 
                   className="w-full h-full object-contain" 
-                  referrerPolicy="no-referrer"
+                  referrerPolicy="no-referrer" crossOrigin="anonymous"
                   onError={(e) => { e.currentTarget.src = 'https://picsum.photos/seed/gcis_logo/150/150'; }} 
                 />
               </div>
@@ -182,7 +182,7 @@ export default function ReceiptView() {
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt="Logo" 
                   className="w-full h-full object-contain" 
-                  referrerPolicy="no-referrer"
+                  referrerPolicy="no-referrer" crossOrigin="anonymous"
                   onError={(e) => { e.currentTarget.src = 'https://picsum.photos/seed/gcis_logo/150/150'; }} 
                 />
               </div>

@@ -2,51 +2,70 @@ import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 
 export async function downloadAsPDF(elementId: string, filename: string) {
-  // Use querySelectorAll to find the *visible* preview element.
-  // When PrintModal is open, the main one might be hidden or we want the one in the modal.
   const elements = document.querySelectorAll(`#${elementId}`);
-  let element = elements[elements.length - 1] as HTMLElement; // Get the last one (likely the modal one if open)
+  let sourceElement = elements[elements.length - 1] as HTMLElement;
 
-  if (!element) {
+  if (!sourceElement) {
     console.error(`Element with id ${elementId} not found`);
     return;
   }
 
   try {
-    // We capture the canvas exactly as it looks on screen.
-    const canvas = await html2canvas(element, {
-      scale: 2, // High resolution for sharpness
+    // 1. Create a pristine, isolated wrapper
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = '-9999px'; // Hide off-screen
+    wrapper.style.top = '0';
+    wrapper.style.width = '800px'; // Force exact desktop width
+    wrapper.style.backgroundColor = '#ffffff';
+    wrapper.style.zIndex = '-1000';
+    document.body.appendChild(wrapper);
+
+    // 2. Clone the visual element perfectly
+    const clone = sourceElement.cloneNode(true) as HTMLElement;
+    clone.style.width = '800px';
+    clone.style.minWidth = '800px';
+    clone.style.maxWidth = '800px';
+    clone.style.margin = '0';
+    clone.style.boxShadow = 'none';
+    clone.style.transform = 'none';
+    clone.style.position = 'relative'; 
+
+    wrapper.appendChild(clone);
+
+    // 3. Wait a moment for browser to apply styles in the clone
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    // 4. Capture the isolated wrapper
+    // We reduce scale slightly from 2.0 to 1.5 to drastically reduce file size while maintaining readability
+    const canvas = await html2canvas(wrapper, {
+      scale: 1.5, 
       useCORS: true,
-      allowTaint: true,
+      allowTaint: false, 
       backgroundColor: '#ffffff',
       logging: false,
     });
 
-    const imgData = canvas.toDataURL('image/png', 1.0);
+    // 5. Cleanup the DOM immediately
+    document.body.removeChild(wrapper);
+
+    // 6. Generate the PDF
+    // Switch to JPEG compression instead of PNG to make the file size MUCH lighter
+    const imgData = canvas.toDataURL('image/jpeg', 0.8);
     
-    // Create an A4 portrait PDF
+    // Instead of forcing it to standard A4 paper, we create a custom PDF page size 
+    // that EXACTLY matches the dimensions of the invoice preview tab block.
     const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
+      orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [canvas.width, canvas.height]
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
-    const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
-    
-    // Calculate the height to perfectly maintain the original element's aspect ratio
-    const imgProps = pdf.getImageProperties(imgData);
-    const imgRatio = imgProps.height / imgProps.width;
-    const finalHeight = pdfWidth * imgRatio;
-
-    // Add the image perfectly scaled to A4 width
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, finalHeight);
-    
-    // Auto download the exact screenshot
+    pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
     pdf.save(filename);
 
   } catch (error) {
     console.error('Error generating PDF:', error);
-    alert('An error occurred while generating the PDF. Please try again.');
+    alert('An error occurred while generating the PDF. Please check your connection and try again.');
   }
 }
