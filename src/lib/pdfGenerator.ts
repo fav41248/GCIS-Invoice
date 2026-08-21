@@ -11,50 +11,38 @@ export async function downloadAsPDF(elementId: string, filename: string) {
   }
 
   try {
-    // 1. Create a pristine, isolated wrapper
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'absolute';
-    wrapper.style.left = '-9999px'; // Hide off-screen
-    wrapper.style.top = '0';
-    wrapper.style.width = '800px'; // Force exact desktop width
-    wrapper.style.backgroundColor = '#ffffff';
-    wrapper.style.zIndex = '-1000';
-    document.body.appendChild(wrapper);
-
-    // 2. Clone the visual element perfectly
-    const clone = sourceElement.cloneNode(true) as HTMLElement;
-    clone.style.width = '800px';
-    clone.style.minWidth = '800px';
-    clone.style.maxWidth = '800px';
-    clone.style.margin = '0';
-    clone.style.boxShadow = 'none';
-    clone.style.transform = 'none';
-    clone.style.position = 'relative'; 
-
-    wrapper.appendChild(clone);
-
-    // 3. Wait a moment for browser to apply styles in the clone
-    await new Promise(resolve => setTimeout(resolve, 150));
-
-    // 4. Capture the isolated wrapper
-    // We reduce scale slightly from 2.0 to 1.5 to drastically reduce file size while maintaining readability
-    const canvas = await html2canvas(wrapper, {
+    const canvas = await html2canvas(sourceElement, {
       scale: 1.5, 
       useCORS: true,
       allowTaint: false, 
       backgroundColor: '#ffffff',
       logging: false,
+      windowWidth: 1024,
+      onclone: (clonedDoc) => {
+        // html2canvas clones the whole document. We need to find our element in the clone
+        // and force all its parents to have overflow: visible so it doesn't get clipped.
+        const clonedElements = clonedDoc.querySelectorAll(`#${elementId}`);
+        const clonedElement = clonedElements[clonedElements.length - 1] as HTMLElement;
+        
+        if (clonedElement) {
+            clonedElement.style.width = '800px';
+            clonedElement.style.minWidth = '800px';
+            clonedElement.style.maxWidth = '800px';
+            
+            let parent = clonedElement.parentElement;
+            while(parent && parent !== clonedDoc.body) {
+                parent.style.overflow = 'visible';
+                parent.style.position = 'static';
+                parent.style.maxHeight = 'none';
+                parent.style.transform = 'none';
+                parent = parent.parentElement;
+            }
+        }
+      }
     });
 
-    // 5. Cleanup the DOM immediately
-    document.body.removeChild(wrapper);
-
-    // 6. Generate the PDF
-    // Switch to JPEG compression instead of PNG to make the file size MUCH lighter
     const imgData = canvas.toDataURL('image/jpeg', 0.8);
     
-    // Instead of forcing it to standard A4 paper, we create a custom PDF page size 
-    // that EXACTLY matches the dimensions of the invoice preview tab block.
     const pdf = new jsPDF({
       orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
       unit: 'px',

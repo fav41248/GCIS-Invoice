@@ -98,7 +98,7 @@ export default function InvoiceView() {
             <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
               <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName || 'Client Name'}</p>
-              <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress || 'Client Address'}</p>
+              {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
             <div className='flex justify-end gap-12 items-center'>
               <div className='text-right'>
@@ -220,7 +220,7 @@ export default function InvoiceView() {
             <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
               <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName || 'Client Name'}</p>
-              <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress || 'Client Address'}</p>
+              {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
             <div className='flex justify-end gap-12 items-center'>
               <div className='text-right'>

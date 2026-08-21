@@ -73,7 +73,12 @@ export default function InvoiceGenerator() {
       const client = clients.find(c => c.id === id);
       if (client) {
         setBillTo(client.name);
-        setBillToAddress(client.address || '');
+        const addr = client.address || '';
+        const phone = client.phone || '';
+        if (addr && phone) setBillToAddress(addr + ' - ' + phone);
+        else if (addr) setBillToAddress(addr);
+        else if (phone) setBillToAddress(phone);
+        else setBillToAddress('');
       }
     }
   };
@@ -368,7 +373,7 @@ export default function InvoiceGenerator() {
               <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
                 <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
                 <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
-                <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress || 'Client Address'}</p>
+                {billToAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress}</p>}
               </div>
               <div className='flex justify-end gap-12 items-center'>
                 <div className='text-right'>
@@ -543,7 +548,7 @@ export default function InvoiceGenerator() {
               <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
                 <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
                 <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
-                <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress || 'Client Address'}</p>
+                {billToAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress}</p>}
               </div>
               <div className='flex justify-end gap-12 items-center'>
                 <div className='text-right'>

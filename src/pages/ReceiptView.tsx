@@ -102,7 +102,7 @@ export default function ReceiptView() {
             <div className='p-5 bg-green-50 rounded-lg border-l-4 border-green-600'>
               <h5 className='text-xs font-bold text-green-800 uppercase mb-2 tracking-wider'>Received From:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName}</p>
-              <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>
+              {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
             <div className='flex justify-end gap-12 items-center'>
               <div className='text-right'>
@@ -203,7 +203,7 @@ export default function ReceiptView() {
             <div className='p-5 bg-green-50 rounded-lg border-l-4 border-green-600'>
               <h5 className='text-xs font-bold text-green-800 uppercase mb-2 tracking-wider'>Received From:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName}</p>
-              <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>
+              {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
             <div className='flex justify-end gap-12 items-center'>
               <div className='text-right'>
