@@ -1,4 +1,4 @@
-import html2canvas from 'html2canvas-pro';
+import * as htmlToImage from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
 export async function downloadAsPDF(elementId: string, filename: string) {
@@ -31,9 +31,7 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     clone.style.transform = 'none';
     clone.style.position = 'relative'; 
 
-    // 3. The Magic Fix: Inputs don't clone their typed values, and html2canvas 
-    // can sometimes struggle with rendering custom inputs correctly across browsers. 
-    // We will convert all inputs into standard text DIVs in the clone!
+    // 3. Convert all inputs into standard text DIVs in the clone!
     const originalInputs = sourceElement.querySelectorAll('input, textarea, select');
     const clonedInputs = clone.querySelectorAll('input, textarea, select');
     
@@ -78,28 +76,30 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     // 4. Wait a moment for browser to apply styles in the clone
     await new Promise(resolve => setTimeout(resolve, 150));
 
-    // 5. Capture the isolated wrapper
-    const canvas = await html2canvas(wrapper, {
-      scale: 2, // High resolution
-      useCORS: true,
-      allowTaint: false, 
+    // 5. Capture the isolated wrapper using html-to-image
+    const scale = 2; // High resolution
+    
+    const dataUrl = await htmlToImage.toJpeg(wrapper, {
+      quality: 0.9,
       backgroundColor: '#ffffff',
-      logging: false,
+      pixelRatio: scale,
+      style: {
+        transform: 'scale(1)',
+        transformOrigin: 'top left',
+      }
     });
 
     // 6. Cleanup the DOM immediately
     document.body.removeChild(wrapper);
 
     // 7. Generate the PDF
-    const imgData = canvas.toDataURL('image/jpeg', 0.8); // Compress to jpeg to save size
-    
     const pdf = new jsPDF({
-      orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+      orientation: wrapper.offsetWidth > wrapper.offsetHeight ? 'landscape' : 'portrait',
       unit: 'px',
-      format: [canvas.width, canvas.height]
+      format: [wrapper.offsetWidth, wrapper.offsetHeight]
     });
 
-    pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+    pdf.addImage(dataUrl, 'JPEG', 0, 0, wrapper.offsetWidth, wrapper.offsetHeight);
     pdf.save(filename);
 
   } catch (error) {
