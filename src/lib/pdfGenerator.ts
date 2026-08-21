@@ -11,17 +11,15 @@ export async function downloadAsPDF(elementId: string, filename: string) {
   }
 
   try {
-    // 1. Create a pristine, isolated wrapper
     const wrapper = document.createElement('div');
     wrapper.style.position = 'absolute';
-    wrapper.style.left = '-9999px'; // Hide off-screen
+    wrapper.style.left = '-9999px'; 
     wrapper.style.top = '0';
-    wrapper.style.width = '800px'; // Force exact desktop width
+    wrapper.style.width = '800px'; 
     wrapper.style.backgroundColor = '#ffffff';
     wrapper.style.zIndex = '-1000';
     document.body.appendChild(wrapper);
 
-    // 2. Clone the visual element perfectly
     const clone = sourceElement.cloneNode(true) as HTMLElement;
     clone.style.width = '800px';
     clone.style.minWidth = '800px';
@@ -31,7 +29,35 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     clone.style.transform = 'none';
     clone.style.position = 'relative'; 
 
-    // 3. Convert all inputs into standard text DIVs in the clone!
+    // --- FIX FOR CLOUDFLARE/TAILWIND CSS DROPPING ---
+    // Fetch all external stylesheets manually and inline them into the clone.
+    const styleNode = document.createElement('style');
+    let cssText = '';
+    
+    document.querySelectorAll('style').forEach(s => {
+      cssText += s.innerHTML + '\n';
+    });
+
+    const links = document.querySelectorAll('link[rel="stylesheet"]');
+    for (const link of Array.from(links)) {
+      try {
+        const href = (link as HTMLLinkElement).href;
+        if (href) {
+          const response = await fetch(href);
+          if (response.ok) {
+            cssText += await response.text() + '\n';
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch stylesheet for PDF generation:', e);
+      }
+    }
+    
+    styleNode.innerHTML = cssText;
+    clone.insertBefore(styleNode, clone.firstChild);
+    // ------------------------------------------------
+
+    // Convert all inputs into standard text DIVs in the clone!
     const originalInputs = sourceElement.querySelectorAll('input, textarea, select');
     const clonedInputs = clone.querySelectorAll('input, textarea, select');
     
@@ -43,7 +69,6 @@ export async function downloadAsPDF(elementId: string, filename: string) {
         const textNode = document.createElement('div');
         textNode.innerText = val;
         
-        // Copy essential text styling so it looks exactly like the input
         const computedStyle = window.getComputedStyle(original);
         textNode.style.fontFamily = computedStyle.fontFamily;
         textNode.style.fontSize = computedStyle.fontSize;
@@ -56,7 +81,6 @@ export async function downloadAsPDF(elementId: string, filename: string) {
         textNode.style.display = 'flex';
         textNode.style.alignItems = 'center';
         
-        // Handle alignment exactly as the input had it
         textNode.style.justifyContent = 
           computedStyle.textAlign === 'right' ? 'flex-end' : 
           (computedStyle.textAlign === 'center' ? 'center' : 'flex-start');
@@ -64,7 +88,6 @@ export async function downloadAsPDF(elementId: string, filename: string) {
         textNode.style.overflow = 'hidden';
         textNode.style.boxSizing = 'border-box';
         
-        // Replace the raw input element with our perfectly styled text block in the clone
         if (cloned.parentNode) {
           cloned.parentNode.replaceChild(textNode, cloned);
         }
@@ -73,11 +96,9 @@ export async function downloadAsPDF(elementId: string, filename: string) {
 
     wrapper.appendChild(clone);
 
-    // 4. Wait a moment for browser to apply styles in the clone
     await new Promise(resolve => setTimeout(resolve, 150));
 
-    // 5. Capture the isolated wrapper using html-to-image
-    const scale = 2; // High resolution
+    const scale = 2;
     
     const dataUrl = await htmlToImage.toJpeg(wrapper, {
       quality: 0.9,
@@ -89,10 +110,8 @@ export async function downloadAsPDF(elementId: string, filename: string) {
       }
     });
 
-    // 6. Cleanup the DOM immediately
     document.body.removeChild(wrapper);
 
-    // 7. Generate the PDF
     const pdf = new jsPDF({
       orientation: wrapper.offsetWidth > wrapper.offsetHeight ? 'landscape' : 'portrait',
       unit: 'px',
