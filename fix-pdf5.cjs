@@ -1,4 +1,8 @@
+const fs = require('fs');
+let code = fs.readFileSync('src/lib/pdfGenerator.ts', 'utf-8');
 
+// The screenshot proved dom-to-image failed just as badly. Let's write our own clean SVG wrapping.
+code = `
 import { jsPDF } from 'jspdf';
 import * as htmlToImage from 'html-to-image';
 
@@ -28,21 +32,21 @@ export async function downloadAsPDF(elementId: string, filename: string) {
       textNode.innerText = val || ' '; 
       
       const computedStyle = window.getComputedStyle(input);
-      textNode.style.cssText = `
-        font-family: ${computedStyle.fontFamily};
-        font-size: ${computedStyle.fontSize};
-        font-weight: ${computedStyle.fontWeight};
-        color: ${computedStyle.color};
-        text-align: ${computedStyle.textAlign};
-        padding: ${computedStyle.padding};
-        margin: ${computedStyle.margin};
-        width: ${computedStyle.width};
-        height: ${computedStyle.height};
+      textNode.style.cssText = \`
+        font-family: \${computedStyle.fontFamily};
+        font-size: \${computedStyle.fontSize};
+        font-weight: \${computedStyle.fontWeight};
+        color: \${computedStyle.color};
+        text-align: \${computedStyle.textAlign};
+        padding: \${computedStyle.padding};
+        margin: \${computedStyle.margin};
+        width: \${computedStyle.width};
+        height: \${computedStyle.height};
         display: flex;
         align-items: center;
         box-sizing: border-box;
-        justify-content: ${computedStyle.textAlign === 'right' ? 'flex-end' : (computedStyle.textAlign === 'center' ? 'center' : 'flex-start')};
-      `;
+        justify-content: \${computedStyle.textAlign === 'right' ? 'flex-end' : (computedStyle.textAlign === 'center' ? 'center' : 'flex-start')};
+      \`;
 
       replacements.push({ parent, original: input, textNode, nextSibling: input.nextSibling });
       parent.replaceChild(textNode, input);
@@ -145,3 +149,5 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     alert('An error occurred while generating the PDF.');
   }
 }
+`;
+fs.writeFileSync('src/lib/pdfGenerator.ts', code);
