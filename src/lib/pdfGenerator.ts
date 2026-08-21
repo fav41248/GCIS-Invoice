@@ -1,126 +1,52 @@
+import html2canvas from 'html2canvas-pro';
+import { jsPDF } from 'jspdf';
+
 export async function downloadAsPDF(elementId: string, filename: string) {
-  const element = document.getElementById(elementId);
+  // Use querySelectorAll to find the *visible* preview element.
+  // When PrintModal is open, the main one might be hidden or we want the one in the modal.
+  const elements = document.querySelectorAll(`#${elementId}`);
+  let element = elements[elements.length - 1] as HTMLElement; // Get the last one (likely the modal one if open)
+
   if (!element) {
     console.error(`Element with id ${elementId} not found`);
     return;
   }
 
   try {
-    // Create a hidden iframe
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '-10000px';
-    iframe.style.bottom = '-10000px';
-    iframe.style.width = '210mm'; // A4 width
-    // Set a large enough height to render content naturally without scrollbars
-    iframe.style.height = '2000px'; 
-    document.body.appendChild(iframe);
-
-    const iframeDoc = iframe.contentWindow?.document;
-    if (!iframeDoc) {
-      document.body.removeChild(iframe);
-      throw new Error("Could not access iframe document");
-    }
-
-    // Open iframe document and write HTML skeleton
-    iframeDoc.open();
-    iframeDoc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${filename.replace('.pdf', '')}</title>
-          <meta charset="utf-8">
-        </head>
-        <body class="bg-white">
-          <div id="print-root"></div>
-        </body>
-      </html>
-    `);
-    iframeDoc.close();
-
-    // Copy all stylesheets from the main document to the iframe
-    const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
-    styles.forEach((style) => {
-      iframeDoc.head.appendChild(style.cloneNode(true));
+    // We capture the canvas exactly as it looks on screen.
+    const canvas = await html2canvas(element, {
+      scale: 2, // High resolution for sharpness
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
     });
 
-    // Add specific print styles
-    const printStyle = iframeDoc.createElement('style');
-    printStyle.textContent = `
-      @page {
-        size: A4 portrait;
-        margin: 0;
-      }
-      body {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        background-color: white !important;
-        margin: 0;
-        padding: 0;
-      }
-      #print-root {
-        width: 210mm;
-        margin: 0 auto;
-        background: white;
-      }
-      /* Hide things that shouldn't be printed */
-      .print\\:hidden { display: none !important; }
-      
-      /* Make inputs look like standard text in print */
-      input, textarea {
-        border: none !important;
-        background: transparent !important;
-        outline: none !important;
-        box-shadow: none !important;
-        resize: none !important;
-        -webkit-appearance: none !important;
-        appearance: none !important;
-      }
-      /* Hide number input spinners in print */
-      input[type="number"]::-webkit-inner-spin-button,
-      input[type="number"]::-webkit-outer-spin-button {
-        -webkit-appearance: none !important;
-        margin: 0 !important;
-      }
-      /* Ensure proper styling for tailwind background colors */
-      * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-    `;
-    iframeDoc.head.appendChild(printStyle);
-
-    // Clone the element and append it to the iframe's print-root
-    const clone = element.cloneNode(true) as HTMLElement;
+    const imgData = canvas.toDataURL('image/png', 1.0);
     
-    // Remove the fixed A4 container constraints that might conflict with print
-    clone.style.width = '100%';
-    clone.style.height = 'auto';
-    clone.style.minHeight = '0';
-    clone.style.boxShadow = 'none';
-    clone.style.margin = '0';
-    // KEEP padding so internal layout remains intact
+    // Create an A4 portrait PDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+    const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
     
-    iframeDoc.getElementById('print-root')?.appendChild(clone);
+    // Calculate the height to perfectly maintain the original element's aspect ratio
+    const imgProps = pdf.getImageProperties(imgData);
+    const imgRatio = imgProps.height / imgProps.width;
+    const finalHeight = pdfWidth * imgRatio;
 
-    // Wait a brief moment to ensure fonts/styles/images are applied
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    // Trigger the print dialog
-    if (iframe.contentWindow) {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    }
-
-    // Clean up the iframe after print dialog is closed
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 1500);
+    // Add the image perfectly scaled to A4 width
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, finalHeight);
+    
+    // Auto download the exact screenshot
+    pdf.save(filename);
 
   } catch (error) {
     console.error('Error generating PDF:', error);
-    alert('An error occurred while preparing the document for print/PDF. Please try again.');
+    alert('An error occurred while generating the PDF. Please try again.');
   }
 }

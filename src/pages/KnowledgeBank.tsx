@@ -21,7 +21,7 @@ export default function KnowledgeBank() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       // Sort alphabetically
-      data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      data.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
       setProducts(data);
       setLoading(false);
     });

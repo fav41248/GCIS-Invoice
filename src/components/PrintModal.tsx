@@ -34,7 +34,7 @@ export function PrintModal({ isOpen, onClose, children, onDownloadPdf, isGenerat
           className="bg-[#0F5132] text-white px-6 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-[#198754] transition-colors shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
         >
           <Download className="h-4 w-4" />
-          {isGenerating ? 'Preparing PDF...' : 'Export to PDF'}
+          {isGenerating ? 'Generating PDF...' : 'Download exact PDF'}
         </button>
         <button 
           onClick={onClose}
@@ -45,7 +45,7 @@ export function PrintModal({ isOpen, onClose, children, onDownloadPdf, isGenerat
       </div>
 
       {/* The A4 Container */}
-      <div className="w-[210mm] min-h-[297mm] bg-white shadow-2xl overflow-y-auto max-h-[90vh] print:max-h-none print:w-full print:h-auto print:shadow-none print:overflow-visible">
+      <div className="w-fit min-h-[297mm] bg-white shadow-2xl overflow-y-auto max-h-[90vh] print:max-h-none print:w-full print:h-auto print:shadow-none print:overflow-visible">
         {children}
       </div>
     </div>

@@ -32,6 +32,10 @@ export default function InvoiceView() {
     fetchData();
   }, [id]);
 
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+
   if (loading) return <div className="p-8">Loading invoice...</div>;
   if (!invoice) return <div className="p-8 text-red-500">Invoice not found.</div>;
 
@@ -45,8 +49,7 @@ export default function InvoiceView() {
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   };
 
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  
   const handlePrint = () => setShowPrintModal(true);
 
 

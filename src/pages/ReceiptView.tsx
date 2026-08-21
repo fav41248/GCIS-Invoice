@@ -32,6 +32,10 @@ export default function ReceiptView() {
     fetchData();
   }, [id]);
 
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+
   if (loading) return <div className="p-8">Loading receipt...</div>;
   if (!invoice) return <div className="p-8 text-red-500">Receipt not found.</div>;
 
@@ -45,8 +49,7 @@ export default function ReceiptView() {
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   };
 
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  
   const handlePrint = () => setShowPrintModal(true);
 
 
