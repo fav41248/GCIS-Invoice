@@ -37,7 +37,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen bg-[#F8F9FA] text-[#212529] font-sans overflow-hidden flex-col md:flex-row">
+    <div className="flex h-screen print:h-auto bg-[#F8F9FA] print:bg-white text-[#212529] font-sans overflow-hidden flex-col md:flex-row">
       
       {/* Mobile Top Bar */}
       <div className="md:hidden bg-[#0F5132] text-white p-4 flex justify-between items-center shrink-0 print:hidden z-20 shadow-md">

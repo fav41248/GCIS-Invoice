@@ -5,6 +5,8 @@ import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { OperationType, handleFirestoreError } from '../lib/db';
 import { useNavigate } from 'react-router-dom';
+import { PrintModal } from '../components/PrintModal';
+import { downloadAsPDF } from '../lib/pdfGenerator';
 import html2pdf from 'html2pdf.js';
 
 export default function InvoiceGenerator() {
@@ -25,7 +27,9 @@ export default function InvoiceGenerator() {
   const [notes, setNotes] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const isPrinting = showPrintModal;
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
 
   const [manualItems, setManualItems] = useState<any[]>([]);
@@ -206,27 +210,8 @@ export default function InvoiceGenerator() {
   };
 
   const handlePrint = async () => {
-    // 1. Auto-save first
     await saveInvoiceToDb();
-
-    // 2. Set printing state to convert inputs to spans for html2canvas
-    setIsPrinting(true);
-    
-    // 3. Wait for React to re-render the DOM without inputs
-    setTimeout(async () => {
-      const element = document.getElementById('invoice-preview');
-      if (element) {
-        const opt = {
-          margin:       0,
-          filename:     `Invoice_${invoiceNumber}.pdf`,
-          image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2, useCORS: true },
-          jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-        };
-        await html2pdf().set(opt).from(element).save();
-      }
-      setIsPrinting(false);
-    }, 150);
+    setShowPrintModal(true);
   };
 
   const handleSave = async () => {
@@ -237,7 +222,7 @@ export default function InvoiceGenerator() {
   };
 
   return (
-      <div className='flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden print:p-0 print:block print:overflow-visible'>
+      <div className='flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden print:p-0 print:overflow-visible print:block print:block print:overflow-visible'>
         <section className='w-full lg:w-[400px] flex flex-col gap-5 lg:overflow-y-auto pr-0 lg:pr-2 print:hidden shrink-0'>
           <div className='bg-white p-5 rounded-xl border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>1. Raw Input (Quick Paste)</h2>
@@ -350,11 +335,12 @@ export default function InvoiceGenerator() {
         </section>
 
         <section className='flex-1 bg-[#F8F9FA] rounded-xl border border-gray-200 shadow-inner overflow-hidden flex flex-col print:border-none print:shadow-none print:rounded-none print:overflow-visible print:bg-white min-h-[500px] lg:min-h-0'>
-          <div className='flex-1 overflow-x-auto overflow-y-auto p-4 flex justify-start lg:justify-center print:p-0'>
-            <div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:w-full'>
+          <div className='flex-1 overflow-x-auto overflow-y-auto p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block'>
+            {showPrintModal ? null : (
+<div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
             <div className='flex justify-between items-start mb-10'>
               <div className='flex items-center gap-5'>
-                <div className='w-20 h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                   <img 
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}
@@ -399,11 +385,11 @@ export default function InvoiceGenerator() {
             <table className='w-full text-left text-sm mb-8'>
               <thead className='border-b-2 border-gray-200'>
                 <tr>
-                  <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12'>S/N</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12 min-w-[3rem]'>S/N</th>
                   <th className='py-4 text-xs font-bold text-gray-500 uppercase'>Item Description</th>
-                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-center w-20'>Qty</th>
-                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-right w-28'>Price</th>
-                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-right w-32'>Total</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-center w-20 min-w-[5rem]'>Qty</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-right w-28 min-w-[7rem]'>Price</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-right w-32 min-w-[8rem]'>Total</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-gray-100'>
@@ -431,7 +417,7 @@ export default function InvoiceGenerator() {
                           type="text"
                           value={item.description}
                           onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
-                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:m-0 print:border-none"
+                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
                     </td>
@@ -444,7 +430,7 @@ export default function InvoiceGenerator() {
                           min="1"
                           value={item.qty}
                           onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
-                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:m-0 print:border-none"
+                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
                     </td>
@@ -459,7 +445,7 @@ export default function InvoiceGenerator() {
                             min="0"
                             value={item.price}
                             onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
-                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:m-0 print:border-none"
+                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                           />
                         )}
                       </div>
@@ -501,6 +487,7 @@ export default function InvoiceGenerator() {
               </div>
             </div>
           </div>
+)}
           </div>
           
           <div className='bg-[#D1E7DD] p-4 flex justify-between items-center border-t border-[#198754]/20 print:hidden shrink-0'>
@@ -514,6 +501,168 @@ export default function InvoiceGenerator() {
             </button>
           </div>
         </section>
-      </div>
+      
+      <PrintModal 
+        isOpen={showPrintModal} 
+        onClose={() => setShowPrintModal(false)}
+        isGenerating={isGeneratingPdf}
+        onDownloadPdf={async () => {
+          setIsGeneratingPdf(true);
+          await downloadAsPDF('invoice-preview', `Invoice_${invoiceNumber}.pdf`);
+          setIsGeneratingPdf(false);
+        }}
+      >
+        <div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+            <div className='flex justify-between items-start mb-10'>
+              <div className='flex items-center gap-5'>
+                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+                  <img 
+                    src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
+                    alt={companySettings?.name || "Logo"}
+                    className="w-full h-full object-contain" 
+                    referrerPolicy="no-referrer" 
+                    onError={(e) => { 
+                      e.currentTarget.src = 'https://picsum.photos/seed/gcis_logo/150/150'; 
+                    }} 
+                  />
+                </div>
+                <div>
+                  <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
+                  <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoiceNumber}</p>
+                </div>
+              </div>
+              <div className='text-right'>
+                <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
+                <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
+                {companySettings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{companySettings.email}</p>}
+                {companySettings?.phone && <p className='text-sm text-gray-500 mt-1'>{companySettings.phone}</p>}
+              </div>
+            </div>
+            
+            <div className='grid grid-cols-2 gap-8 mb-10'>
+              <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
+                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
+                <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
+                <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress || 'Client Address'}</p>
+              </div>
+              <div className='flex justify-end gap-12 items-center'>
+                <div className='text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
+                  <p className='text-sm font-semibold text-[#212529]'>{formatDate(issueDate) || '-'}</p>
+                </div>
+                <div className='text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
+                  <p className='text-sm font-semibold text-[#212529]'>{formatDate(dueDate) || '-'}</p>
+                </div>
+              </div>
+            </div>
+
+            <table className='w-full text-left text-sm mb-8'>
+              <thead className='border-b-2 border-gray-200'>
+                <tr>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12 min-w-[3rem]'>S/N</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase'>Item Description</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-center w-20 min-w-[5rem]'>Qty</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-right w-28 min-w-[7rem]'>Price</th>
+                  <th className='py-4 text-xs font-bold text-gray-500 uppercase text-right w-32 min-w-[8rem]'>Total</th>
+                </tr>
+              </thead>
+              <tbody className='divide-y divide-gray-100'>
+                {allItems.length > 0 ? allItems.map((item) => (
+                  <tr key={item.id} className="group hover:bg-gray-50 transition-colors">
+                    <td className='py-4 text-gray-500 font-mono text-xs'>
+                      {item.displayId}
+                      <button 
+                        onClick={() => {
+                          const newSet = new Set(deletedItems);
+                          newSet.add(item.id);
+                          setDeletedItems(newSet);
+                        }} 
+                        className="ml-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
+                        title="Remove item"
+                      >
+                        ×
+                      </button>
+                    </td>
+                    <td className='py-4 font-medium text-[#212529]'>
+                      {isPrinting ? (
+                        <div className="w-full p-1 -ml-1 text-[#212529] font-medium">{item.description}</div>
+                      ) : (
+                        <input 
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
+                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                        />
+                      )}
+                    </td>
+                    <td className='py-4 text-center font-medium'>
+                      {isPrinting ? (
+                        <div className="w-16 mx-auto p-1 text-center font-medium">{item.qty}</div>
+                      ) : (
+                        <input 
+                          type="number"
+                          min="1"
+                          value={item.qty}
+                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
+                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                        />
+                      )}
+                    </td>
+                    <td className='py-4 text-right text-gray-600'>
+                      <div className="flex items-center justify-end">
+                        <span>{currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : ''}</span>
+                        {isPrinting ? (
+                          <div className="w-24 text-right p-1 ml-1 text-gray-600">{item.price}</div>
+                        ) : (
+                          <input 
+                            type="number"
+                            min="0"
+                            value={item.price}
+                            onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
+                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td className='py-4 text-right font-bold text-[#212529]'>{formatCurrency(item.total)}</td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-gray-400 italic">No items added. Paste items in the raw input to see them here.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div className='flex justify-between items-start pt-6 mt-4'>
+              <div className='w-1/2 pr-8'>
+                {notes && (
+                  <>
+                    <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
+                    <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>
+                  </>
+                )}
+              </div>
+              <div className='w-72 space-y-3 shrink-0'>
+                <div className='flex justify-between text-sm'>
+                  <span className='text-gray-500'>Subtotal</span>
+                  <span className='font-semibold'>{formatCurrency(subtotal)}</span>
+                </div>
+                {vatRate > 0 && (
+                  <div className='flex justify-between text-sm'>
+                    <span className='text-gray-500'>VAT ({vatRate}%)</span>
+                    <span className='font-semibold'>{formatCurrency(vatAmount)}</span>
+                  </div>
+                )}
+                <div className='flex justify-between text-xl pt-4 border-t-2 border-gray-200'>
+                  <span className='font-black text-[#0F5132]'>Grand Total</span>
+                  <span className='font-black text-[#0F5132]'>{formatCurrency(grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+      </PrintModal>
+    </div>
   );
 }

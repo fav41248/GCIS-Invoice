@@ -151,11 +151,11 @@ export default function Settings() {
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <h2 className="text-lg font-bold mb-4 border-b pb-2">Business Profile</h2>
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+            <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name *</label>
               <input required type="text" className="w-full border rounded p-2 text-sm" value={name} onChange={e => setName(e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Office Address *</label>
               <textarea required className="w-full border rounded p-2 text-sm h-20 resize-none" value={address} onChange={e => setAddress(e.target.value)} />
             </div>
@@ -167,7 +167,7 @@ export default function Settings() {
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
               <input type="text" className="w-full border rounded p-2 text-sm" value={phone} onChange={e => setPhone(e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Logo URL</label>
               <input type="text" className="w-full border rounded p-2 text-sm" placeholder="https://example.com/logo.png" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} />
               <p className="text-xs text-gray-400 mt-1">Provide a direct URL to your company logo to display on invoices.</p>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, where } from 'firebase/firestore';
+import { Clock, Trash2 } from 'lucide-react';
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, where, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
@@ -34,6 +35,17 @@ export default function Invoices() {
     return unsubscribe;
   }, [user]);
 
+
+  const deleteInvoice = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+      try {
+        await deleteDoc(doc(db, 'invoices', id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `invoices/${id}`);
+      }
+    }
+  };
+
   const markAsPaid = async (id: string) => {
     try {
       await updateDoc(doc(db, 'invoices', id), {
@@ -47,8 +59,18 @@ export default function Invoices() {
 
   if (loading) return <div className="p-8">Loading invoices...</div>;
 
+
+  const isOverdue = (invoice) => {
+    if (invoice.status === 'paid' || !invoice.dueDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(invoice.dueDate);
+    due.setHours(0, 0, 0, 0);
+    return due < today;
+  };
+
   return (
-    <div className="p-8 max-w-6xl mx-auto w-full">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Invoice History</h1>
       </div>
@@ -84,9 +106,16 @@ export default function Invoices() {
                   {inv.grandTotal?.toLocaleString()}
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                    {inv.status.toUpperCase()}
-                  </span>
+                  <div className="flex flex-col gap-2 items-start">
+                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                      {inv.status.toUpperCase()}
+                    </span>
+                    {isOverdue(inv) && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
+                        <Clock className="w-3 h-3" /> OVERDUE
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
                   <Link to={`/invoice/${inv.id}`} className="inline-block text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors">
@@ -104,11 +133,20 @@ export default function Invoices() {
                        View Receipt
                      </Link>
                   ) : null}
+                  {isAdmin && (
+                    <button 
+                      onClick={() => deleteInvoice(inv.id)}
+                      className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 transition-colors font-semibold flex items-center justify-center"
+                      title="Delete Invoice"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
             {invoices.length === 0 && (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No invoices generated yet.</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No invoices generated yet.</td></tr>
             )}
           </tbody>
         </table>

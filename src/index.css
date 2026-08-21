@@ -1,1 +1,46 @@
 @import "tailwindcss";
+
+@media print {
+  @page {
+    margin: 0.5cm;
+    size: a4 portrait;
+  }
+  
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background-color: white !important;
+  }
+
+  /* Hide app content when print modal is open */
+  body.print-modal-active #root {
+    display: none !important;
+  }
+
+  /* Reset layout constraints for print */
+  #invoice-preview, #receipt-preview {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Make inputs look like standard text in print */
+  input, textarea {
+    border: none !important;
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+    resize: none !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+  
+  /* Hide number input spinners in print */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+  }
+}

@@ -161,8 +161,8 @@ export default function KnowledgeBank() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50">
-      <div className="p-8 border-b border-gray-200 bg-white shrink-0">
-        <div className="flex justify-between items-start mb-6">
+      <div className="p-4 md:p-8 border-b border-gray-200 bg-white shrink-0">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-[#0F5132] flex items-center gap-3">
               <BookOpen className="w-8 h-8 text-[#198754]" />
@@ -211,12 +211,12 @@ export default function KnowledgeBank() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-8">
+      <div className="flex-1 overflow-auto p-4 md:p-8">
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading price list...</div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Product Name</th>

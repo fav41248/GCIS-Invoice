@@ -3,6 +3,7 @@ import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
+import { Clock } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -29,8 +30,18 @@ export default function Dashboard() {
   const totalPaid = invoices.filter(i => i.status === 'paid').reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
   const totalUnpaid = invoices.filter(i => i.status === 'unpaid').reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
 
+
+  const isOverdue = (invoice) => {
+    if (invoice.status === 'paid' || !invoice.dueDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(invoice.dueDate);
+    due.setHours(0, 0, 0, 0);
+    return due < today;
+  };
+
   return (
-    <div className="p-8 max-w-6xl mx-auto w-full">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <h1 className="text-2xl font-bold mb-6">Financial Overview</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
@@ -49,8 +60,8 @@ export default function Dashboard() {
       </div>
 
       <h2 className="text-lg font-bold mb-4">Recent Invoices</h2>
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[800px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-4 font-bold text-gray-600">Invoice #</th>
@@ -73,14 +84,21 @@ export default function Dashboard() {
                 <td className="px-6 py-4 text-gray-500">{inv.issueDate}</td>
                 <td className="px-6 py-4 font-medium">₦{inv.grandTotal?.toLocaleString()}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                    {inv.status.toUpperCase()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                      {inv.status.toUpperCase()}
+                    </span>
+                    {isOverdue(inv) && (
+                      <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
+                        <Clock className="w-3 h-3" /> Overdue
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
             {invoices.length === 0 && (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No invoices generated yet.</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No invoices generated yet.</td></tr>
             )}
           </tbody>
         </table>

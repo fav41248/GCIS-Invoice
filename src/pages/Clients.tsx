@@ -46,7 +46,7 @@ export default function Clients() {
   if (loading) return <div className="p-8">Loading clients...</div>;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto w-full">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto w-full">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Client Database</h1>
         <button 
@@ -60,12 +60,12 @@ export default function Clients() {
       {showAdd && (
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mb-6">
           <h2 className="font-bold mb-4">Add Client</h2>
-          <form onSubmit={handleAdd} className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name *</label>
               <input required type="text" className="w-full border rounded p-2 text-sm" value={name} onChange={e => setName(e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
               <input type="text" className="w-full border rounded p-2 text-sm" value={address} onChange={e => setAddress(e.target.value)} />
             </div>
@@ -84,8 +84,8 @@ export default function Clients() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[800px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-4 font-bold text-gray-600">Name</th>
