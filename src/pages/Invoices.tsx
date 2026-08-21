@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
@@ -11,9 +12,19 @@ export default function Invoices() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'));
+    
+    let q;
+    if (isAdmin) {
+      q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'));
+    } else {
+      q = query(collection(db, 'invoices'), where('createdBy', '==', user.username));
+    }
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (!isAdmin) {
+        data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
       setInvoices(data);
       setLoading(false);
     }, (error) => {
@@ -42,8 +53,8 @@ export default function Invoices() {
         <h1 className="text-2xl font-bold">Invoice History</h1>
       </div>
       
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[800px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-4 font-bold text-gray-600">Invoice #</th>
@@ -77,7 +88,10 @@ export default function Invoices() {
                     {inv.status.toUpperCase()}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-right flex justify-end gap-2">
+                  <Link to={`/invoice/${inv.id}`} className="inline-block text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors">
+                    View Invoice
+                  </Link>
                   {inv.status === 'unpaid' && (isAdmin || inv.createdBy === user?.username) ? (
                     <button 
                       onClick={() => markAsPaid(inv.id)}
@@ -86,9 +100,9 @@ export default function Invoices() {
                       Mark Paid
                     </button>
                   ) : inv.status === 'paid' ? (
-                     <a href={`/receipt/${inv.id}`} className="inline-block text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors">
+                     <Link to={`/receipt/${inv.id}`} className="inline-block text-sm bg-green-100 text-green-800 px-3 py-1 rounded hover:bg-green-200 transition-colors font-semibold">
                        View Receipt
-                     </a>
+                     </Link>
                   ) : null}
                 </td>
               </tr>

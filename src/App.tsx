@@ -8,6 +8,7 @@ import Invoices from './pages/Invoices';
 import Clients from './pages/Clients';
 import CompanySettings from './pages/Settings';
 import ReceiptView from './pages/ReceiptView';
+import InvoiceView from './pages/InvoiceView';
 import UsersPage from './pages/Users';
 import KnowledgeBank from './pages/KnowledgeBank';
 import PriceList from './pages/PriceList';
@@ -15,6 +16,7 @@ import PriceList from './pages/PriceList';
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, logout } = useAuth();
   const location = useLocation();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -29,10 +31,48 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     ] : []),
   ];
 
+  // Close mobile menu on route change
+  React.useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
   return (
-    <div className="flex h-screen bg-[#F8F9FA] text-[#212529] font-sans overflow-hidden">
-      <aside className="w-64 bg-[#0F5132] text-white flex flex-col print:hidden shrink-0">
-        <div className="p-6 border-b border-[#198754]">
+    <div className="flex h-screen bg-[#F8F9FA] text-[#212529] font-sans overflow-hidden flex-col md:flex-row">
+      
+      {/* Mobile Top Bar */}
+      <div className="md:hidden bg-[#0F5132] text-white p-4 flex justify-between items-center shrink-0 print:hidden z-20 shadow-md">
+        <div className='flex items-center gap-3'>
+          <div className='bg-white p-1 rounded shrink-0'>
+            <img src="https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png" alt="Green Collar Logo" className='w-6 h-6 object-contain rounded-sm' />
+          </div>
+          <h1 className='text-base font-bold tracking-tight'>GCIS Portal</h1>
+        </div>
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 bg-white/10 rounded-md hover:bg-white/20 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+          </svg>
+        </button>
+      </div>
+
+      {/* Sidebar Overlay (Mobile) */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-10 md:hidden" 
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`
+        fixed md:static inset-y-0 left-0 z-20
+        w-64 bg-[#0F5132] text-white flex flex-col print:hidden shrink-0 shadow-2xl md:shadow-none
+        transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div className="p-6 border-b border-[#198754] hidden md:block">
            <div className='flex items-center gap-3'>
             <div className='bg-white p-1 rounded shrink-0'>
               <img src="https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png" alt="Green Collar Logo" className='w-8 h-8 object-contain rounded-sm' />
@@ -66,6 +106,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </button>
         </div>
       </aside>
+
       <main className="flex-1 overflow-auto print:overflow-visible relative flex flex-col">
          {children}
       </main>
@@ -153,6 +194,7 @@ export default function App() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/settings" element={<CompanySettings />} />
         <Route path="/receipt/:id" element={<ReceiptView />} />
+        <Route path="/invoice/:id" element={<InvoiceView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

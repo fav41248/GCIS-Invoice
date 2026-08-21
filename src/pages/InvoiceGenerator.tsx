@@ -25,6 +25,8 @@ export default function InvoiceGenerator() {
   const [notes, setNotes] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [savedDocId, setSavedDocId] = useState<string | null>(null);
 
   const [manualItems, setManualItems] = useState<any[]>([]);
   const [manualDesc, setManualDesc] = useState('');
@@ -165,23 +167,10 @@ export default function InvoiceGenerator() {
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   };
 
-  const handlePrint = () => {
-    const element = document.getElementById('invoice-preview');
-    if (!element) return;
-    
-    const opt = {
-      margin:       0,
-      filename:     `Invoice_${invoiceNumber}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-    };
+  const saveInvoiceToDb = async () => {
+    if (!user) return false;
+    if (savedDocId) return true; // Already saved
 
-    html2pdf().set(opt).from(element).save();
-  };
-
-  const handleSave = async () => {
-    if (!auth.currentUser) return;
     setIsSaving(true);
     try {
       const invoiceData = {
@@ -205,18 +194,51 @@ export default function InvoiceGenerator() {
         paidAt: ''
       };
       
-      await addDoc(collection(db, 'invoices'), invoiceData);
-      navigate('/invoices');
+      const docRef = await addDoc(collection(db, 'invoices'), invoiceData);
+      setSavedDocId(docRef.id);
+      return true;
     } catch (error) {
        handleFirestoreError(error, OperationType.CREATE, 'invoices');
+       return false;
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handlePrint = async () => {
+    // 1. Auto-save first
+    await saveInvoiceToDb();
+
+    // 2. Set printing state to convert inputs to spans for html2canvas
+    setIsPrinting(true);
+    
+    // 3. Wait for React to re-render the DOM without inputs
+    setTimeout(async () => {
+      const element = document.getElementById('invoice-preview');
+      if (element) {
+        const opt = {
+          margin:       0,
+          filename:     `Invoice_${invoiceNumber}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true },
+          jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+        };
+        await html2pdf().set(opt).from(element).save();
+      }
+      setIsPrinting(false);
+    }, 150);
+  };
+
+  const handleSave = async () => {
+    const success = await saveInvoiceToDb();
+    if (success) {
+      navigate('/invoices');
+    }
+  };
+
   return (
-      <div className='flex-1 flex gap-6 p-6 overflow-hidden print:p-0 print:block print:overflow-visible'>
-        <section className='w-[400px] flex flex-col gap-5 overflow-y-auto pr-2 print:hidden'>
+      <div className='flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden print:p-0 print:block print:overflow-visible'>
+        <section className='w-full lg:w-[400px] flex flex-col gap-5 lg:overflow-y-auto pr-0 lg:pr-2 print:hidden shrink-0'>
           <div className='bg-white p-5 rounded-xl border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>1. Raw Input (Quick Paste)</h2>
             <textarea 
@@ -327,8 +349,9 @@ export default function InvoiceGenerator() {
           </div>
         </section>
 
-        <section className='flex-1 bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden flex flex-col print:border-none print:shadow-none print:rounded-none print:overflow-visible'>
-          <div id="invoice-preview" className='flex-1 p-10 overflow-auto relative print:overflow-visible print:p-0'>
+        <section className='flex-1 bg-[#F8F9FA] rounded-xl border border-gray-200 shadow-inner overflow-hidden flex flex-col print:border-none print:shadow-none print:rounded-none print:overflow-visible print:bg-white min-h-[500px] lg:min-h-0'>
+          <div className='flex-1 overflow-x-auto overflow-y-auto p-4 flex justify-start lg:justify-center print:p-0'>
+            <div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:w-full'>
             <div className='flex justify-between items-start mb-10'>
               <div className='flex items-center gap-5'>
                 <div className='w-20 h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
@@ -401,32 +424,44 @@ export default function InvoiceGenerator() {
                       </button>
                     </td>
                     <td className='py-4 font-medium text-[#212529]'>
-                      <input 
-                        type="text"
-                        value={item.description}
-                        onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
-                        className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:m-0 print:border-none"
-                      />
+                      {isPrinting ? (
+                        <div className="w-full p-1 -ml-1 text-[#212529] font-medium">{item.description}</div>
+                      ) : (
+                        <input 
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
+                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:m-0 print:border-none"
+                        />
+                      )}
                     </td>
                     <td className='py-4 text-center font-medium'>
-                      <input 
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
-                        className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:m-0 print:border-none"
-                      />
+                      {isPrinting ? (
+                        <div className="w-16 mx-auto p-1 text-center font-medium">{item.qty}</div>
+                      ) : (
+                        <input 
+                          type="number"
+                          min="1"
+                          value={item.qty}
+                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
+                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:m-0 print:border-none"
+                        />
+                      )}
                     </td>
                     <td className='py-4 text-right text-gray-600'>
                       <div className="flex items-center justify-end">
                         <span>{currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : ''}</span>
-                        <input 
-                          type="number"
-                          min="0"
-                          value={item.price}
-                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
-                          className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:m-0 print:border-none"
-                        />
+                        {isPrinting ? (
+                          <div className="w-24 text-right p-1 ml-1 text-gray-600">{item.price}</div>
+                        ) : (
+                          <input 
+                            type="number"
+                            min="0"
+                            value={item.price}
+                            onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
+                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:m-0 print:border-none"
+                          />
+                        )}
                       </div>
                     </td>
                     <td className='py-4 text-right font-bold text-[#212529]'>{formatCurrency(item.total)}</td>
@@ -465,6 +500,7 @@ export default function InvoiceGenerator() {
                 </div>
               </div>
             </div>
+          </div>
           </div>
           
           <div className='bg-[#D1E7DD] p-4 flex justify-between items-center border-t border-[#198754]/20 print:hidden shrink-0'>
