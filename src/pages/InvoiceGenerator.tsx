@@ -3,6 +3,7 @@ import { CheckCircle2, Printer, Save } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
+import toast from 'react-hot-toast';
 import { OperationType, handleFirestoreError } from '../lib/db';
 import { useNavigate } from 'react-router-dom';
 import { PrintModal } from '../components/PrintModal';
@@ -229,10 +230,10 @@ export default function InvoiceGenerator() {
   return (
       <div className='flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden print:p-0 print:overflow-visible print:block print:block print:overflow-visible'>
         <section className='w-full lg:w-[400px] flex flex-col gap-5 lg:overflow-y-auto pr-0 lg:pr-2 print:hidden shrink-0'>
-          <div className='bg-white p-5 rounded-xl border border-gray-200 shadow-sm shrink-0'>
+          <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>1. Raw Input (Quick Paste)</h2>
             <textarea 
-              className='w-full h-32 p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#198754] focus:border-transparent resize-none outline-none' 
+              className='w-full h-32 p-3 text-sm border border-gray-300 rounded-md focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent resize-none outline-none' 
               placeholder='3 bags of MOP at 15,000 each&#10;5 force up at 7500 each&#10;7 sprayer at 32,000 each'
               value={rawInput}
               onChange={(e) => setRawInput(e.target.value)}
@@ -240,20 +241,20 @@ export default function InvoiceGenerator() {
             <p className='text-[10px] text-gray-400 mt-2 italic'>* Items are parsed dynamically into the preview.</p>
           </div>
 
-          <div className='bg-white p-5 rounded-xl border border-gray-200 shadow-sm shrink-0'>
+          <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>2. Manual Input</h2>
             <div className='grid grid-cols-12 gap-2 mb-3'>
               <div className='col-span-12'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Product Name</label>
-                <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={manualDesc} onChange={(e) => setManualDesc(e.target.value)} placeholder='e.g. Fertilizer' />
+                <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualDesc} onChange={(e) => setManualDesc(e.target.value)} placeholder='e.g. Fertilizer' />
               </div>
               <div className='col-span-4'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Qty</label>
-                <input type='number' min="1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(parseInt(e.target.value) || 1)} />
+                <input type='number' min="1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(parseInt(e.target.value) || 1)} />
               </div>
               <div className='col-span-8'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Unit Price</label>
-                <input type='number' min="0" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} placeholder='0.00' />
+                <input type='number' min="0" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} placeholder='0.00' />
               </div>
             </div>
             <button 
@@ -272,12 +273,12 @@ export default function InvoiceGenerator() {
             </button>
           </div>
           
-          <div className='bg-white p-5 rounded-xl border border-gray-200 shadow-sm shrink-0'>
+          <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>3. Invoice Details</h2>
             <div className='grid grid-cols-2 gap-4'>
               <div className='col-span-2'>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Select Client</label>
-                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={selectedClientId} onChange={handleClientChange}>
+                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={selectedClientId} onChange={handleClientChange}>
                   <option value="" disabled>-- Select a Client --</option>
                   <option value="custom">Custom / New Client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -285,19 +286,19 @@ export default function InvoiceGenerator() {
               </div>
               <div className='col-span-2'>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Bill To (Name)</label>
-                <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={billTo} onChange={(e) => setBillTo(e.target.value)} />
+                <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={billTo} onChange={(e) => setBillTo(e.target.value)} />
               </div>
               <div className='col-span-2'>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Bill To (Address)</label>
-                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754] resize-none h-16' value={billToAddress} onChange={(e) => setBillToAddress(e.target.value)} />
+                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-16' value={billToAddress} onChange={(e) => setBillToAddress(e.target.value)} />
               </div>
               <div>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Invoice #</label>
-                <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md font-mono outline-none focus:ring-2 focus:ring-[#198754]' value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+                <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md font-mono outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
               </div>
               <div>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Currency</label>
-                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={currency} onChange={(e) => setCurrency(e.target.value)}>
                   <option value="NGN">NGN (₦) - Naira</option>
                   <option value="USD">USD ($) - Dollar</option>
                   <option value="EUR">EUR (€) - Euro</option>
@@ -306,25 +307,25 @@ export default function InvoiceGenerator() {
               </div>
               <div>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Issue Date</label>
-                <input type='date' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                <input type='date' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
               </div>
               <div>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Due Date</label>
-                <input type='date' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                <input type='date' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
               </div>
               <div className='col-span-2'>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>VAT Rate (%)</label>
-                <input type='number' min="0" max="100" step="0.1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754]' value={vatRate} onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)} />
+                <input type='number' min="0" max="100" step="0.1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={vatRate} onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)} />
               </div>
               <div className='col-span-2'>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Payment Account details</label>
-                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754] mb-2' value={selectedAccount} onChange={handleAccountChange}>
+                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] mb-2' value={selectedAccount} onChange={handleAccountChange}>
                   <option value="" disabled>-- Select Payment Account --</option>
                   {companySettings?.paymentAccounts?.map((acc: any) => (
                     <option key={acc.id} value={acc.id}>{acc.bankName} - {acc.accountNumber}</option>
                   ))}
                 </select>
-                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#198754] resize-none h-24' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter payment instructions or additional notes..." />
+                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-24' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter payment instructions or additional notes..." />
               </div>
             </div>
             
@@ -339,13 +340,13 @@ export default function InvoiceGenerator() {
           </div>
         </section>
 
-        <section className='flex-1 bg-[#F8F9FA] rounded-xl border border-gray-200 shadow-inner overflow-hidden flex flex-col print:border-none print:shadow-none print:rounded-none print:overflow-visible print:bg-white min-h-[500px] lg:min-h-0'>
+        <section className='flex-1 bg-[#F8F9FA] rounded-md border border-gray-200 shadow-inner overflow-hidden flex flex-col print:border-none print:shadow-none print:rounded-none print:overflow-visible print:bg-white min-h-[500px] lg:min-h-0'>
           <div className='flex-1 overflow-x-auto overflow-y-auto p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block'>
             {showPrintModal ? null : (
-<div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
-            <div className='flex justify-between items-start mb-10'>
+<div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+            <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
               <div className='flex items-center gap-5'>
-                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                   <img 
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}
@@ -361,33 +362,33 @@ export default function InvoiceGenerator() {
                   <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoiceNumber}</p>
                 </div>
               </div>
-              <div className='text-right'>
+              <div className='text-left @2xl:text-right'>
                 <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
                 <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
-                {companySettings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{companySettings.email}</p>}
+                {companySettings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{companySettings.email}</p>}
                 {companySettings?.phone && <p className='text-sm text-gray-500 mt-1'>{companySettings.phone}</p>}
               </div>
             </div>
             
             <div className='grid grid-cols-2 gap-8 mb-10'>
-              <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
+              <div className='p-5 bg-[#F8F9FA] rounded-md border-l-4 border-[#0F5132] print:border-[#0F5132] print:bg-gray-50'>
                 <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
                 <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
                 {billToAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress}</p>}
               </div>
-              <div className='flex justify-end gap-12 items-center'>
-                <div className='text-right'>
+              <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
+                <div className='text-left @2xl:text-right'>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
                   <p className='text-sm font-semibold text-[#212529]'>{formatDate(issueDate) || '-'}</p>
                 </div>
-                <div className='text-right'>
+                <div className='text-left @2xl:text-right'>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
                   <p className='text-sm font-semibold text-[#212529]'>{formatDate(dueDate) || '-'}</p>
                 </div>
               </div>
             </div>
 
-            <table className='w-full text-left text-sm mb-8'>
+            <div className='overflow-x-auto w-full'><table className='w-full text-left text-sm mb-8 min-w-[600px] @2xl:min-w-full'>
               <thead className='border-b-2 border-gray-200'>
                 <tr>
                   <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12 min-w-[3rem]'>S/N</th>
@@ -422,7 +423,7 @@ export default function InvoiceGenerator() {
                           type="text"
                           value={item.description}
                           onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
-                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
                     </td>
@@ -435,7 +436,7 @@ export default function InvoiceGenerator() {
                           min="1"
                           value={item.qty}
                           onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
-                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
                     </td>
@@ -450,7 +451,7 @@ export default function InvoiceGenerator() {
                             min="0"
                             value={item.price}
                             onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
-                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                           />
                         )}
                       </div>
@@ -463,10 +464,10 @@ export default function InvoiceGenerator() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
 
-            <div className='flex justify-between items-start pt-6 mt-4'>
-              <div className='w-1/2 pr-8'>
+            <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
+              <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
                 {notes && (
                   <>
                     <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
@@ -474,7 +475,7 @@ export default function InvoiceGenerator() {
                   </>
                 )}
               </div>
-              <div className='w-72 space-y-3 shrink-0'>
+              <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
                 <div className='flex justify-between text-sm'>
                   <span className='text-gray-500'>Subtotal</span>
                   <span className='font-semibold'>{formatCurrency(subtotal)}</span>
@@ -495,7 +496,7 @@ export default function InvoiceGenerator() {
 )}
           </div>
           
-          <div className='bg-[#D1E7DD] p-4 flex justify-between items-center border-t border-[#198754]/20 print:hidden shrink-0'>
+          <div className='bg-[#d1fae5] p-4 flex justify-between items-center border-t border-[#0F5132]/20 print:hidden shrink-0'>
             <div className='flex items-center gap-2 text-[#0F5132]'>
               <CheckCircle2 className='h-4 w-4' />
               <span className='text-xs font-semibold uppercase tracking-wider'>Print-ready high resolution preview</span>
@@ -517,10 +518,10 @@ export default function InvoiceGenerator() {
           setIsGeneratingPdf(false);
         }}
       >
-        <div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
-            <div className='flex justify-between items-start mb-10'>
+        <div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+            <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
               <div className='flex items-center gap-5'>
-                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                   <img 
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}
@@ -536,33 +537,33 @@ export default function InvoiceGenerator() {
                   <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoiceNumber}</p>
                 </div>
               </div>
-              <div className='text-right'>
+              <div className='text-left @2xl:text-right'>
                 <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
                 <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
-                {companySettings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{companySettings.email}</p>}
+                {companySettings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{companySettings.email}</p>}
                 {companySettings?.phone && <p className='text-sm text-gray-500 mt-1'>{companySettings.phone}</p>}
               </div>
             </div>
             
             <div className='grid grid-cols-2 gap-8 mb-10'>
-              <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
+              <div className='p-5 bg-[#F8F9FA] rounded-md border-l-4 border-[#0F5132] print:border-[#0F5132] print:bg-gray-50'>
                 <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
                 <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
                 {billToAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress}</p>}
               </div>
-              <div className='flex justify-end gap-12 items-center'>
-                <div className='text-right'>
+              <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
+                <div className='text-left @2xl:text-right'>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
                   <p className='text-sm font-semibold text-[#212529]'>{formatDate(issueDate) || '-'}</p>
                 </div>
-                <div className='text-right'>
+                <div className='text-left @2xl:text-right'>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
                   <p className='text-sm font-semibold text-[#212529]'>{formatDate(dueDate) || '-'}</p>
                 </div>
               </div>
             </div>
 
-            <table className='w-full text-left text-sm mb-8'>
+            <div className='overflow-x-auto w-full'><table className='w-full text-left text-sm mb-8 min-w-[600px] @2xl:min-w-full'>
               <thead className='border-b-2 border-gray-200'>
                 <tr>
                   <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12 min-w-[3rem]'>S/N</th>
@@ -597,7 +598,7 @@ export default function InvoiceGenerator() {
                           type="text"
                           value={item.description}
                           onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
-                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                          className="w-full bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 -ml-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-[#212529] font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
                     </td>
@@ -610,7 +611,7 @@ export default function InvoiceGenerator() {
                           min="1"
                           value={item.qty}
                           onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
-                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                          className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
                     </td>
@@ -625,7 +626,7 @@ export default function InvoiceGenerator() {
                             min="0"
                             value={item.price}
                             onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
-                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
+                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                           />
                         )}
                       </div>
@@ -638,10 +639,10 @@ export default function InvoiceGenerator() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
 
-            <div className='flex justify-between items-start pt-6 mt-4'>
-              <div className='w-1/2 pr-8'>
+            <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
+              <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
                 {notes && (
                   <>
                     <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
@@ -649,7 +650,7 @@ export default function InvoiceGenerator() {
                   </>
                 )}
               </div>
-              <div className='w-72 space-y-3 shrink-0'>
+              <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
                 <div className='flex justify-between text-sm'>
                   <span className='text-gray-500'>Subtotal</span>
                   <span className='font-semibold'>{formatCurrency(subtotal)}</span>

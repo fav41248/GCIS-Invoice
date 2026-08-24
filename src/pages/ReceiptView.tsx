@@ -65,18 +65,18 @@ export default function ReceiptView() {
       </div>
       <div className='flex-1 overflow-x-auto overflow-y-auto bg-[#F8F9FA] p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block print:bg-white'>
         {showPrintModal ? null : (
-<div id="receipt-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+<div id="receipt-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
           
           {/* PAID STAMP */}
           <div className="absolute top-32 right-1/4 opacity-10 pointer-events-none rotate-12 print:opacity-20">
-            <div className="border-8 border-green-600 text-green-600 text-6xl font-black uppercase tracking-widest p-4 rounded-xl">
+            <div className="border-8 border-green-600 text-green-600 text-6xl font-black uppercase tracking-widest p-4 rounded-md">
               PAID
             </div>
           </div>
 
-          <div className='flex justify-between items-start mb-10'>
+          <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt="Logo" 
@@ -90,33 +90,33 @@ export default function ReceiptView() {
                 <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Ref: {invoice.invoiceNumber}</p>
               </div>
             </div>
-            <div className='text-right'>
-              <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
+            <div className='text-left @2xl:text-right'>
+                <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
               <p className='text-sm text-gray-500 whitespace-pre-wrap'>{settings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
-              {settings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{settings.email}</p>}
+              {settings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{settings.email}</p>}
               {settings?.phone && <p className='text-sm text-gray-500 mt-1'>{settings.phone}</p>}
             </div>
           </div>
           
           <div className='grid grid-cols-2 gap-8 mb-10'>
-            <div className='p-5 bg-green-50 rounded-lg border-l-4 border-green-600'>
+            <div className='p-5 bg-green-50 rounded-md border-l-4 border-green-600'>
               <h5 className='text-xs font-bold text-green-800 uppercase mb-2 tracking-wider'>Received From:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName}</p>
               {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
-            <div className='flex justify-end gap-12 items-center'>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Date:</h5>
+            <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Date:</h5>
                 <p className='text-sm font-semibold text-[#212529]'>{invoice.paidAt ? formatDate(invoice.paidAt) : 'N/A'}</p>
               </div>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Amount Paid:</h5>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Amount Paid:</h5>
                 <p className='text-2xl font-black text-green-700'>{formatCurrency(invoice.grandTotal)}</p>
               </div>
             </div>
           </div>
 
-          <table className='w-full text-left text-sm mb-8'>
+          <div className='overflow-x-auto w-full'><table className='w-full text-left text-sm mb-8 min-w-[600px] @2xl:min-w-full'>
             <thead className='border-b-2 border-gray-200'>
               <tr>
                 <th className='py-4 text-xs font-bold text-gray-500 uppercase'>Item Description</th>
@@ -135,17 +135,17 @@ export default function ReceiptView() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table></div>
 
           <div className='flex justify-between items-start pt-6 mt-4 border-t-2 border-gray-200'>
-            <div className='w-1/2 pr-8'>
+            <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
                <div className="flex items-center gap-2 text-green-700 mb-2">
                  <CheckCircle2 className="w-5 h-5" />
                  <span className="font-bold">Payment Received in Full</span>
                </div>
                <p className="text-sm text-gray-500">Thank you for your business. This receipt is an acknowledgement of your payment.</p>
             </div>
-            <div className='w-72 space-y-3 shrink-0'>
+            <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-xl pt-4'>
                 <span className='font-black text-[#0F5132]'>Total Paid</span>
                 <span className='font-black text-green-700'>{formatCurrency(invoice.grandTotal)}</span>
@@ -166,18 +166,18 @@ export default function ReceiptView() {
           setIsGeneratingPdf(false);
         }}
       >
-        <div id="receipt-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+        <div id="receipt-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
           
           {/* PAID STAMP */}
           <div className="absolute top-32 right-1/4 opacity-10 pointer-events-none rotate-12 print:opacity-20">
-            <div className="border-8 border-green-600 text-green-600 text-6xl font-black uppercase tracking-widest p-4 rounded-xl">
+            <div className="border-8 border-green-600 text-green-600 text-6xl font-black uppercase tracking-widest p-4 rounded-md">
               PAID
             </div>
           </div>
 
-          <div className='flex justify-between items-start mb-10'>
+          <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt="Logo" 
@@ -191,33 +191,33 @@ export default function ReceiptView() {
                 <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Ref: {invoice.invoiceNumber}</p>
               </div>
             </div>
-            <div className='text-right'>
-              <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
+            <div className='text-left @2xl:text-right'>
+                <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
               <p className='text-sm text-gray-500 whitespace-pre-wrap'>{settings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
-              {settings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{settings.email}</p>}
+              {settings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{settings.email}</p>}
               {settings?.phone && <p className='text-sm text-gray-500 mt-1'>{settings.phone}</p>}
             </div>
           </div>
           
           <div className='grid grid-cols-2 gap-8 mb-10'>
-            <div className='p-5 bg-green-50 rounded-lg border-l-4 border-green-600'>
+            <div className='p-5 bg-green-50 rounded-md border-l-4 border-green-600'>
               <h5 className='text-xs font-bold text-green-800 uppercase mb-2 tracking-wider'>Received From:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName}</p>
               {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
-            <div className='flex justify-end gap-12 items-center'>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Date:</h5>
+            <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Date:</h5>
                 <p className='text-sm font-semibold text-[#212529]'>{invoice.paidAt ? formatDate(invoice.paidAt) : 'N/A'}</p>
               </div>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Amount Paid:</h5>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Amount Paid:</h5>
                 <p className='text-2xl font-black text-green-700'>{formatCurrency(invoice.grandTotal)}</p>
               </div>
             </div>
           </div>
 
-          <table className='w-full text-left text-sm mb-8'>
+          <div className='overflow-x-auto w-full'><table className='w-full text-left text-sm mb-8 min-w-[600px] @2xl:min-w-full'>
             <thead className='border-b-2 border-gray-200'>
               <tr>
                 <th className='py-4 text-xs font-bold text-gray-500 uppercase'>Item Description</th>
@@ -236,17 +236,17 @@ export default function ReceiptView() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table></div>
 
           <div className='flex justify-between items-start pt-6 mt-4 border-t-2 border-gray-200'>
-            <div className='w-1/2 pr-8'>
+            <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
                <div className="flex items-center gap-2 text-green-700 mb-2">
                  <CheckCircle2 className="w-5 h-5" />
                  <span className="font-bold">Payment Received in Full</span>
                </div>
                <p className="text-sm text-gray-500">Thank you for your business. This receipt is an acknowledgement of your payment.</p>
             </div>
-            <div className='w-72 space-y-3 shrink-0'>
+            <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-xl pt-4'>
                 <span className='font-black text-[#0F5132]'>Total Paid</span>
                 <span className='font-black text-green-700'>{formatCurrency(invoice.grandTotal)}</span>

@@ -165,7 +165,7 @@ export default function KnowledgeBank() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-[#0F5132] flex items-center gap-3">
-              <BookOpen className="w-8 h-8 text-[#198754]" />
+              <BookOpen className="w-8 h-8 text-[#0F5132]" />
               Knowledge Bank (Admin)
             </h1>
             <p className="text-gray-500 mt-1">Upload and manage product pricing database.</p>
@@ -182,7 +182,7 @@ export default function KnowledgeBank() {
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="bg-[#198754] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#0F5132] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                className="bg-[#0F5132] text-white px-4 py-2 rounded-md font-medium hover:bg-[#198754] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
               >
                 <Upload className="w-4 h-4" />
                 {isUploading ? 'Uploading...' : 'Bulk Import (CSV/Excel)'}
@@ -191,7 +191,7 @@ export default function KnowledgeBank() {
         </div>
 
         {uploadStatus && (
-          <div className={`p-4 rounded-lg mb-6 flex items-center gap-3 border ${uploadStatus.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+          <div className={`p-4 rounded-md mb-6 flex items-center gap-3 border ${uploadStatus.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
             {uploadStatus.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
             <span className="text-sm font-medium">{uploadStatus.message}</span>
           </div>
@@ -203,7 +203,7 @@ export default function KnowledgeBank() {
           </div>
           <input
             type="text"
-            className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
+            className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
             placeholder="Search products by name or category..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -215,7 +215,7 @@ export default function KnowledgeBank() {
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading price list...</div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+          <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
@@ -246,7 +246,7 @@ export default function KnowledgeBank() {
                       <td className="px-6 py-4 text-right">
                         <button 
                           onClick={() => handleDelete(product.id)}
-                          className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-md transition-colors"
                           title="Delete Product"
                         >
                           <Trash2 className="w-4 h-4" />

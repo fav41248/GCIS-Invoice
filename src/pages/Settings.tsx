@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
+import toast from 'react-hot-toast';
 import { Save, Plus, Trash2, Download, Database } from 'lucide-react';
 import Papa from 'papaparse';
 
@@ -114,7 +115,7 @@ export default function Settings() {
       <h1 className="text-2xl font-bold mb-6">Company Settings</h1>
       
       <form onSubmit={handleSave} className="space-y-8">
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-white p-6 rounded-md border border-gray-200 shadow-sm">
           <h2 className="text-lg font-bold mb-4 border-b pb-2">Database Backup & Export</h2>
           <p className="text-sm text-gray-500 mb-4">Export your application data as CSV files for backup or analysis.</p>
           <div className="flex flex-wrap gap-4">
@@ -122,7 +123,7 @@ export default function Settings() {
               type="button" 
               onClick={() => exportData('invoices')}
               disabled={exporting !== null}
-              className="bg-blue-50 text-blue-700 border border-blue-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-100 transition-colors disabled:opacity-50"
+              className="bg-blue-50 text-blue-700 border border-blue-200 px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 hover:bg-blue-100 transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
               {exporting === 'invoices' ? 'Exporting...' : 'Export Invoices'}
@@ -131,7 +132,7 @@ export default function Settings() {
               type="button" 
               onClick={() => exportData('clients')}
               disabled={exporting !== null}
-              className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-purple-100 transition-colors disabled:opacity-50"
+              className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 hover:bg-purple-100 transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
               {exporting === 'clients' ? 'Exporting...' : 'Export Clients'}
@@ -140,7 +141,7 @@ export default function Settings() {
               type="button" 
               onClick={() => exportData('users')}
               disabled={exporting !== null}
-              className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-amber-100 transition-colors disabled:opacity-50"
+              className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 hover:bg-amber-100 transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
               {exporting === 'users' ? 'Exporting...' : 'Export Sales Reps'}
@@ -148,7 +149,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-white p-6 rounded-md border border-gray-200 shadow-sm">
           <h2 className="text-lg font-bold mb-4 border-b pb-2">Business Profile</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-1 md:col-span-2">
@@ -175,7 +176,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-white p-6 rounded-md border border-gray-200 shadow-sm">
           <div className="flex justify-between items-center mb-4 border-b pb-2">
             <h2 className="text-lg font-bold">Payment Accounts</h2>
             <button type="button" onClick={addAccount} className="text-sm bg-gray-100 px-3 py-1 flex items-center gap-1 rounded hover:bg-gray-200">
@@ -185,7 +186,7 @@ export default function Settings() {
           
           <div className="space-y-4">
             {paymentAccounts.map((account, index) => (
-              <div key={account.id} className="grid grid-cols-12 gap-3 items-end bg-gray-50 p-4 rounded-lg border border-gray-100">
+              <div key={account.id} className="grid grid-cols-12 gap-3 items-end bg-gray-50 p-4 rounded-md border border-gray-100">
                 <div className="col-span-4">
                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Bank Name</label>
                    <input required type="text" className="w-full border rounded p-2 text-sm" value={account.bankName} onChange={e => updateAccount(account.id, 'bankName', e.target.value)} placeholder="e.g. GTBank" />
@@ -212,7 +213,7 @@ export default function Settings() {
         </div>
 
         <div className="flex justify-end">
-          <button type="submit" disabled={saving} className="bg-[#0F5132] text-white px-8 py-3 rounded-lg font-bold hover:bg-[#198754] flex items-center gap-2">
+          <button type="submit" disabled={saving} className="bg-[#0F5132] text-white px-8 py-3 rounded-md font-bold hover:bg-[#198754] flex items-center gap-2">
             <Save className="w-5 h-5" />
             {saving ? 'Saving...' : 'Save All Settings'}
           </button>

@@ -3,7 +3,8 @@ import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
-import { Clock } from 'lucide-react';
+import { Clock, FileText } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -19,19 +20,17 @@ export default function Dashboard() {
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'invoices');
+      toast.error('Failed to load dashboard data.');
       setLoading(false);
     });
     return unsubscribe;
   }, [user]);
 
-  if (loading) return <div className="p-8">Loading dashboard...</div>;
-
   const totalInvoiced = invoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
   const totalPaid = invoices.filter(i => i.status === 'paid').reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
   const totalUnpaid = invoices.filter(i => i.status === 'unpaid').reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
 
-
-  const isOverdue = (invoice) => {
+  const isOverdue = (invoice: any) => {
     if (invoice.status === 'paid' || !invoice.dueDate) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -45,22 +44,34 @@ export default function Dashboard() {
       <h1 className="text-2xl font-bold mb-6">Financial Overview</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-white p-6 rounded-md border border-gray-200 shadow-sm">
           <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Total Invoiced</p>
-          <p className="text-3xl font-black text-[#212529]">₦{totalInvoiced.toLocaleString()}</p>
+          {loading ? (
+             <div className="h-9 bg-gray-200 rounded w-32 animate-pulse mt-1"></div>
+          ) : (
+             <p className="text-3xl font-black text-[#212529]">₦{totalInvoiced.toLocaleString()}</p>
+          )}
         </div>
-        <div className="bg-white p-6 rounded-xl border border-green-200 shadow-sm bg-green-50/30">
+        <div className="bg-white p-6 rounded-md border border-green-200 shadow-sm bg-green-50/30">
           <p className="text-sm font-semibold text-green-700 uppercase tracking-wider mb-2">Total Paid</p>
-          <p className="text-3xl font-black text-green-700">₦{totalPaid.toLocaleString()}</p>
+          {loading ? (
+             <div className="h-9 bg-green-200 rounded w-32 animate-pulse mt-1"></div>
+          ) : (
+            <p className="text-3xl font-black text-green-700">₦{totalPaid.toLocaleString()}</p>
+          )}
         </div>
-        <div className="bg-white p-6 rounded-xl border border-orange-200 shadow-sm bg-orange-50/30">
+        <div className="bg-white p-6 rounded-md border border-orange-200 shadow-sm bg-orange-50/30">
           <p className="text-sm font-semibold text-orange-700 uppercase tracking-wider mb-2">Total Unpaid</p>
-          <p className="text-3xl font-black text-orange-700">₦{totalUnpaid.toLocaleString()}</p>
+          {loading ? (
+             <div className="h-9 bg-orange-200 rounded w-32 animate-pulse mt-1"></div>
+          ) : (
+            <p className="text-3xl font-black text-orange-700">₦{totalUnpaid.toLocaleString()}</p>
+          )}
         </div>
       </div>
 
       <h2 className="text-lg font-bold mb-4">Recent Invoices</h2>
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-x-auto">
         <table className="w-full text-left text-sm min-w-[800px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -73,32 +84,55 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {invoices.slice(0, 5).map(inv => (
-              <tr key={inv.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 font-mono text-gray-600">{inv.invoiceNumber}</td>
-                <td className="px-6 py-4 font-medium text-[#212529]">{inv.clientName}</td>
-                <td className="px-6 py-4 text-gray-500 text-sm">
-                  {inv.createdByEmail || 'Unknown'} <br/>
-                  <span className="text-xs text-gray-400">@{inv.createdBy || 'unknown'}</span>
-                </td>
-                <td className="px-6 py-4 text-gray-500">{inv.issueDate}</td>
-                <td className="px-6 py-4 font-medium">₦{inv.grandTotal?.toLocaleString()}</td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                      {inv.status.toUpperCase()}
-                    </span>
-                    {isOverdue(inv) && (
-                      <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
-                        <Clock className="w-3 h-3" /> Overdue
+            {loading ? (
+              [...Array(5)].map((_, i) => (
+                <tr key={`skeleton-${i}`}>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20 animate-pulse"></div></td>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-32 animate-pulse"></div></td>
+                  <td className="px-6 py-4">
+                    <div className="h-4 bg-gray-200 rounded w-24 animate-pulse mb-2"></div>
+                    <div className="h-3 bg-gray-100 rounded w-16 animate-pulse"></div>
+                  </td>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24 animate-pulse"></div></td>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16 animate-pulse"></div></td>
+                  <td className="px-6 py-4"><div className="h-6 bg-gray-200 rounded-full w-16 animate-pulse"></div></td>
+                </tr>
+              ))
+            ) : invoices.length > 0 ? (
+              invoices.slice(0, 5).map(inv => (
+                <tr key={inv.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-mono text-gray-600">{inv.invoiceNumber}</td>
+                  <td className="px-6 py-4 font-medium text-[#212529]">{inv.clientName}</td>
+                  <td className="px-6 py-4 text-gray-500 text-sm">
+                    {inv.createdByEmail || 'Unknown'} <br/>
+                    <span className="text-xs text-gray-400">@{inv.createdBy || 'unknown'}</span>
+                  </td>
+                  <td className="px-6 py-4 text-gray-500">{inv.issueDate}</td>
+                  <td className="px-6 py-4 font-medium">₦{inv.grandTotal?.toLocaleString()}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-2 items-start">
+                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                        {inv.status.toUpperCase()}
                       </span>
-                    )}
-                  </div>
+                      {isOverdue(inv) && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
+                          <Clock className="w-3 h-3" /> OVERDUE
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center">
+                   <div className="flex flex-col items-center justify-center text-gray-500">
+                     <FileText className="w-12 h-12 text-gray-300 mb-3" />
+                     <p className="text-lg font-medium text-gray-900 mb-1">No invoices generated yet</p>
+                     <p className="text-sm">When you create invoices, they will appear here.</p>
+                   </div>
                 </td>
               </tr>
-            ))}
-            {invoices.length === 0 && (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No invoices generated yet.</td></tr>
             )}
           </tbody>
         </table>

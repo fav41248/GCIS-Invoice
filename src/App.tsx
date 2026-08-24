@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
-import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { LayoutDashboard, FileText, FilePlus, Users, Tag, Settings, LogOut, BookOpen, UserCog } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { LayoutDashboard, FileText, Users, Settings, LogOut, FilePlus, UserCog, BookOpen, Tag } from 'lucide-react';
-import InvoiceGenerator from './pages/InvoiceGenerator';
 import Dashboard from './pages/Dashboard';
+import InvoiceGenerator from './pages/InvoiceGenerator';
 import Invoices from './pages/Invoices';
 import Clients from './pages/Clients';
+import PriceList from './pages/PriceList';
+import KnowledgeBank from './pages/KnowledgeBank';
+import UsersPage from './pages/Users';
 import CompanySettings from './pages/Settings';
 import ReceiptView from './pages/ReceiptView';
 import InvoiceView from './pages/InvoiceView';
-import UsersPage from './pages/Users';
-import KnowledgeBank from './pages/KnowledgeBank';
-import PriceList from './pages/PriceList';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, logout } = useAuth();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
+  
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'New Invoice', path: '/generator', icon: FilePlus },
@@ -38,7 +39,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="flex h-screen print:h-auto bg-[#F8F9FA] print:bg-white text-[#212529] font-sans overflow-hidden flex-col md:flex-row">
-      
+            
       {/* Mobile Top Bar */}
       <div className="md:hidden bg-[#0F5132] text-white p-4 flex justify-between items-center shrink-0 print:hidden z-20 shadow-md">
         <div className='flex items-center gap-3'>
@@ -80,6 +81,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <h1 className='text-lg font-bold tracking-tight leading-tight'>Admin Portal</h1>
           </div>
         </div>
+
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => (
              <Link
@@ -92,6 +94,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
              </Link>
           ))}
         </nav>
+
         <div className="p-4 border-t border-[#198754]">
           <div className="flex items-center gap-3 mb-4 px-2">
             <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{user?.username?.charAt(0).toUpperCase()}</div>
@@ -154,7 +157,7 @@ export default function App() {
                 <input 
                   type="text" 
                   required 
-                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" 
+                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none"
                   value={username} 
                   onChange={e => setUsername(e.target.value)} 
                 />
@@ -164,7 +167,7 @@ export default function App() {
                 <input 
                   type="password" 
                   required 
-                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" 
+                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none"
                   value={password} 
                   onChange={e => setPassword(e.target.value)} 
                 />
@@ -174,7 +177,7 @@ export default function App() {
                 disabled={isLoggingIn}
                 className="w-full bg-[#198754] text-white py-2.5 rounded-lg font-bold hover:bg-[#0F5132] transition-colors mt-2"
               >
-                 {isLoggingIn ? 'Signing in...' : 'Sign In'}
+                {isLoggingIn ? 'Signing in...' : 'Sign In'}
               </button>
             </form>
          </div>
@@ -197,6 +200,7 @@ export default function App() {
         <Route path="/invoice/:id" element={<InvoiceView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Toaster position="bottom-right" />
     </Layout>
   );
 }

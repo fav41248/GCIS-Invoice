@@ -66,11 +66,11 @@ export default function InvoiceView() {
 
       <div className='flex-1 overflow-x-auto overflow-y-auto bg-[#F8F9FA] p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block print:bg-white'>
         {showPrintModal ? null : (
-<div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+<div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
           
-          <div className='flex justify-between items-start mb-10'>
+          <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt={settings?.name || "Logo"}
@@ -86,33 +86,33 @@ export default function InvoiceView() {
                 <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoice.invoiceNumber}</p>
               </div>
             </div>
-            <div className='text-right'>
-              <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
+            <div className='text-left @2xl:text-right'>
+                <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
               <p className='text-sm text-gray-500 whitespace-pre-wrap'>{settings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
-              {settings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{settings.email}</p>}
+              {settings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{settings.email}</p>}
               {settings?.phone && <p className='text-sm text-gray-500 mt-1'>{settings.phone}</p>}
             </div>
           </div>
           
           <div className='grid grid-cols-2 gap-8 mb-10'>
-            <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
+            <div className='p-5 bg-[#F8F9FA] rounded-md border-l-4 border-[#0F5132] print:border-[#0F5132] print:bg-gray-50'>
               <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName || 'Client Name'}</p>
               {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
-            <div className='flex justify-end gap-12 items-center'>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
+            <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
                 <p className='text-sm font-semibold text-[#212529]'>{formatDate(invoice.issueDate) || '-'}</p>
               </div>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
                 <p className='text-sm font-semibold text-[#212529]'>{formatDate(invoice.dueDate) || '-'}</p>
               </div>
             </div>
           </div>
 
-          <table className='w-full text-left text-sm mb-8'>
+          <div className='overflow-x-auto w-full'><table className='w-full text-left text-sm mb-8 min-w-[600px] @2xl:min-w-full'>
             <thead className='border-b-2 border-gray-200'>
               <tr>
                 <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12 min-w-[3rem]'>S/N</th>
@@ -145,10 +145,10 @@ export default function InvoiceView() {
                 </tr>
               )}
             </tbody>
-          </table>
+            </table></div>
 
-          <div className='flex justify-between items-start pt-6 mt-4'>
-            <div className='w-1/2 pr-8'>
+          <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
+            <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
               {invoice.paymentNotes && (
                 <>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
@@ -156,7 +156,7 @@ export default function InvoiceView() {
                 </>
               )}
             </div>
-            <div className='w-72 space-y-3 shrink-0'>
+            <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-sm'>
                 <span className='text-gray-500'>Subtotal</span>
                 <span className='font-semibold'>{formatCurrency(invoice.subtotal || 0)}</span>
@@ -188,11 +188,11 @@ export default function InvoiceView() {
           setIsGeneratingPdf(false);
         }}
       >
-        <div id="invoice-preview" className='bg-white w-[800px] min-w-[800px] shrink-0 p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+        <div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
           
-          <div className='flex justify-between items-start mb-10'>
+          <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt={settings?.name || "Logo"}
@@ -208,33 +208,33 @@ export default function InvoiceView() {
                 <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoice.invoiceNumber}</p>
               </div>
             </div>
-            <div className='text-right'>
-              <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
+            <div className='text-left @2xl:text-right'>
+                <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
               <p className='text-sm text-gray-500 whitespace-pre-wrap'>{settings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
-              {settings?.email && <p className='text-sm text-[#198754] font-medium mt-1'>{settings.email}</p>}
+              {settings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{settings.email}</p>}
               {settings?.phone && <p className='text-sm text-gray-500 mt-1'>{settings.phone}</p>}
             </div>
           </div>
           
           <div className='grid grid-cols-2 gap-8 mb-10'>
-            <div className='p-5 bg-[#F8F9FA] rounded-lg border-l-4 border-[#198754] print:border-[#198754] print:bg-gray-50'>
+            <div className='p-5 bg-[#F8F9FA] rounded-md border-l-4 border-[#0F5132] print:border-[#0F5132] print:bg-gray-50'>
               <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName || 'Client Name'}</p>
               {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
             </div>
-            <div className='flex justify-end gap-12 items-center'>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
+            <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Issue Date:</h5>
                 <p className='text-sm font-semibold text-[#212529]'>{formatDate(invoice.issueDate) || '-'}</p>
               </div>
-              <div className='text-right'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
+              <div className='text-left @2xl:text-right'>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Due Date:</h5>
                 <p className='text-sm font-semibold text-[#212529]'>{formatDate(invoice.dueDate) || '-'}</p>
               </div>
             </div>
           </div>
 
-          <table className='w-full text-left text-sm mb-8'>
+          <div className='overflow-x-auto w-full'><table className='w-full text-left text-sm mb-8 min-w-[600px] @2xl:min-w-full'>
             <thead className='border-b-2 border-gray-200'>
               <tr>
                 <th className='py-4 text-xs font-bold text-gray-500 uppercase w-12 min-w-[3rem]'>S/N</th>
@@ -267,10 +267,10 @@ export default function InvoiceView() {
                 </tr>
               )}
             </tbody>
-          </table>
+            </table></div>
 
-          <div className='flex justify-between items-start pt-6 mt-4'>
-            <div className='w-1/2 pr-8'>
+          <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
+            <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
               {invoice.paymentNotes && (
                 <>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
@@ -278,7 +278,7 @@ export default function InvoiceView() {
                 </>
               )}
             </div>
-            <div className='w-72 space-y-3 shrink-0'>
+            <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-sm'>
                 <span className='text-gray-500'>Subtotal</span>
                 <span className='font-semibold'>{formatCurrency(invoice.subtotal || 0)}</span>

@@ -1,106 +1,299 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import React, { useEffect, useState, useMemo } from 'react';
+import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Search, FileText, Tag } from 'lucide-react';
+import { handleFirestoreError, OperationType } from '../lib/db';
+import { useAuth } from '../AuthContext';
+import { Trash2, Edit2, Search, Download, Tag, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { exportToCSV } from '../lib/utils';
 
 export default function PriceList() {
-  const [products, setProducts] = useState<any[]>([]);
+  const { user, isAdmin } = useAuth();
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
-    const q = query(collection(db, 'products'));
+    if (!user) return;
+    const q = query(collection(db, 'price_list'), orderBy('name', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort alphabetically
-      data.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
-      setProducts(data);
+      setItems(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'price_list');
+      toast.error('Failed to load price list.');
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [user]);
 
-  const filteredProducts = products.filter(p => 
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.category?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const saveItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const id = editId || `item_${Date.now()}`;
+      await setDoc(doc(db, 'price_list', id), {
+        name,
+        description,
+        price: Number(price),
+        updatedAt: new Date().toISOString(),
+        createdBy: user?.username
+      }, { merge: true });
+      
+      toast.success(editId ? 'Item updated successfully' : 'Item added successfully');
+      resetForm();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'price_list');
+      toast.error('Failed to save item');
+    }
+  };
+
+  const deleteItem = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this item?')) {
+      try {
+        await deleteDoc(doc(db, 'price_list', id));
+        toast.success('Item deleted successfully');
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `price_list/${id}`);
+        toast.error('Failed to delete item');
+      }
+    }
+  };
+
+  const handleEdit = (item: any) => {
+    setEditId(item.id);
+    setName(item.name);
+    setDescription(item.description || '');
+    setPrice(item.price.toString());
+    setIsEditing(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const resetForm = () => {
+    setEditId('');
+    setName('');
+    setDescription('');
+    setPrice('');
+    setIsEditing(false);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const filteredAndSortedItems = useMemo(() => {
+    let result = [...items];
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      result = result.filter(item => 
+        item.name?.toLowerCase().includes(lower) || 
+        item.description?.toLowerCase().includes(lower)
+      );
+    }
+    
+    result.sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      
+      if (sortField === 'price') {
+        aVal = Number(aVal) || 0;
+        bVal = Number(bVal) || 0;
+      } else {
+        aVal = String(aVal || '').toLowerCase();
+        bVal = String(bVal || '').toLowerCase();
+      }
+
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return result;
+  }, [items, searchTerm, sortField, sortOrder]);
+
+  const totalPages = Math.ceil(filteredAndSortedItems.length / itemsPerPage);
+  const currentItems = filteredAndSortedItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handleExport = () => {
+    const dataToExport = filteredAndSortedItems.map(item => ({
+      'Service/Product Name': item.name,
+      'Description': item.description,
+      'Price': item.price,
+      'Added By': item.createdBy
+    }));
+    exportToCSV(dataToExport, 'price_list.csv');
+    toast.success('Price list exported');
+  };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-gray-50">
-      <div className="p-4 md:p-8 border-b border-gray-200 bg-white shrink-0">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-[#0F5132] flex items-center gap-3">
-              <Tag className="w-8 h-8 text-[#198754]" />
-              Product Price List
-            </h1>
-            <p className="text-gray-500 mt-1">Search and confirm pricing for products in the central database.</p>
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <h1 className="text-2xl font-bold">Price List</h1>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input 
+              type="text"
+              placeholder="Search services..."
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#198754] outline-none"
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            />
           </div>
-        </div>
-
-        <div className="relative max-w-2xl">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
-            placeholder="Search products by name or category..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors whitespace-nowrap">
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 md:p-8">
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading price list...</div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[600px]">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Product Name</th>
-                  <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Category</th>
-                  <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right">Unit Price</th>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <form onSubmit={saveItem} className="bg-white p-6 rounded-md border border-gray-200 shadow-sm sticky top-6">
+            <h2 className="text-lg font-semibold mb-4">{isEditing ? 'Edit Item' : 'Add New Item'}</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Service / Product Name</label>
+                <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={name} onChange={e => setName(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Description (Optional)</label>
+                <textarea rows={2} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={description} onChange={e => setDescription(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Price (₦)</label>
+                <input required type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={price} onChange={e => setPrice(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              {isEditing && (
+                <button type="button" onClick={resetForm} className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-md font-medium hover:bg-gray-200 transition-colors">
+                  Cancel
+                </button>
+              )}
+              <button type="submit" className="flex-1 bg-[#198754] text-white py-2 rounded-md font-medium hover:bg-[#0F5132] transition-colors">
+                {isEditing ? 'Update Item' : 'Save Item'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="lg:col-span-2">
+          <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-x-auto">
+            <table className="w-full text-left text-sm min-w-[500px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
+                    <div className="flex items-center gap-1">Item Details <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                  </th>
+                  <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('price')}>
+                    <div className="flex items-center gap-1">Price <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                  </th>
+                  <th className="px-6 py-4 font-bold text-gray-600 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredProducts.map(product => (
-                  <tr key={product.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-[#212529] flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        {product.name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <span className="bg-gray-100 px-2.5 py-1 rounded-md">{product.category || 'General'}</span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="font-bold text-[#0F5132] text-lg">
-                        ₦{product.price?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {filteredProducts.length === 0 && (
+                {loading ? (
+                   [...Array(4)].map((_, i) => (
+                    <tr key={`skeleton-${i}`}>
+                      <td className="px-6 py-4">
+                        <div className="h-5 bg-gray-200 rounded w-40 animate-pulse mb-2"></div>
+                        <div className="h-4 bg-gray-100 rounded w-64 animate-pulse"></div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
+                      </td>
+                      <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div></td>
+                    </tr>
+                  ))
+                ) : currentItems.length > 0 ? (
+                  currentItems.map(item => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <p className="font-semibold text-gray-900">{item.name}</p>
+                        {item.description && <p className="text-gray-500 text-xs mt-1 max-w-sm">{item.description}</p>}
+                      </td>
+                      <td className="px-6 py-4 font-mono font-medium">
+                        ₦{Number(item.price).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => handleEdit(item)}
+                            className="p-1.5 text-gray-500 hover:text-[#0F5132] hover:bg-green-50 rounded transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          {isAdmin && (
+                            <button 
+                              onClick={() => deleteItem(item.id)}
+                              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
                   <tr>
                     <td colSpan={3} className="px-6 py-12 text-center">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                        <Search className="w-8 h-8 text-gray-400" />
-                      </div>
-                      <h3 className="text-lg font-medium text-gray-900">No products found</h3>
-                      <p className="mt-1 text-gray-500 text-sm">
-                        {searchTerm ? `No results for "${searchTerm}"` : 'The price list is currently empty.'}
-                      </p>
+                       <div className="flex flex-col items-center justify-center text-gray-500">
+                         <Tag className="w-12 h-12 text-gray-300 mb-3" />
+                         <p className="text-lg font-medium text-gray-900 mb-1">{searchTerm ? "No matching items found" : "No price list items yet"}</p>
+                         <p className="text-sm">Use the form to add your services.</p>
+                       </div>
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-        )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-500">
+                Showing <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredAndSortedItems.length)}</span> of <span className="font-medium">{filteredAndSortedItems.length}</span> items
+              </div>
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
     </div>
   );

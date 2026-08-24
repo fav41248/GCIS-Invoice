@@ -3,6 +3,7 @@ import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, deleteD
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
+import toast from 'react-hot-toast';
 import { Eye, EyeOff, Edit2, Save, X } from 'lucide-react';
 
 export default function Users() {
@@ -102,16 +103,16 @@ export default function Users() {
         <h1 className="text-2xl font-bold">Sales Reps & Users</h1>
         <button 
           onClick={() => setShowAdd(!showAdd)}
-          className="bg-[#0F5132] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#198754]"
+          className="bg-[#0F5132] text-white px-4 py-2 rounded-md font-medium hover:bg-[#198754]"
         >
           {showAdd ? 'Cancel' : 'Add New Sales Rep'}
         </button>
       </div>
 
       {showAdd && (
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mb-6">
+        <div className="bg-white p-6 rounded-md border border-gray-200 shadow-sm mb-6">
           <h2 className="font-bold mb-4">Create New Account</h2>
-          {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm border border-red-100 rounded-lg">{error}</div>}
+          {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm border border-red-100 rounded-md">{error}</div>}
           <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name *</label>
@@ -126,7 +127,7 @@ export default function Users() {
               <input required type="text" minLength={4} placeholder="1234" className="w-full border rounded p-2 text-sm" value={pin} onChange={e => setPin(e.target.value)} />
             </div>
             <div className="col-span-2 flex justify-end mt-2">
-              <button disabled={isCreating} type="submit" className="bg-[#198754] text-white px-6 py-2 rounded font-medium mt-2">
+              <button disabled={isCreating} type="submit" className="bg-[#0F5132] text-white px-6 py-2 rounded font-medium mt-2">
                 {isCreating ? 'Creating...' : 'Create Rep'}
               </button>
             </div>
@@ -134,7 +135,7 @@ export default function Users() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-x-auto">
         <table className="w-full text-left text-sm min-w-[600px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -176,7 +177,7 @@ export default function Users() {
                     <td className="px-6 py-4 text-gray-500">
                       <div className="flex items-center gap-2">
                         {showPins[u.id] ? <span className="font-mono text-gray-800 font-medium">{u.pin}</span> : <span className="text-gray-400 tracking-widest mt-1">••••••</span>}
-                        <button onClick={() => setShowPins({...showPins, [u.id]: !showPins[u.id]})} className="text-gray-400 hover:text-[#198754] transition-colors ml-2">
+                        <button onClick={() => setShowPins({...showPins, [u.id]: !showPins[u.id]})} className="text-gray-400 hover:text-[#0F5132] transition-colors ml-2">
                           {showPins[u.id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
@@ -185,7 +186,7 @@ export default function Users() {
                        <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-50 text-blue-700'}`}>{u.role}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => startEdit(u)} className="text-[#198754] hover:text-[#0F5132] font-medium flex items-center gap-1 justify-end w-full">
+                      <button onClick={() => startEdit(u)} className="text-[#0F5132] hover:text-[#0F5132] font-medium flex items-center gap-1 justify-end w-full">
                         <Edit2 className="w-4 h-4" /> Edit
                       </button>
                     </td>

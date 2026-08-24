@@ -79,8 +79,12 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     const originalLeft = sourceElement.style.left;
     const originalZIndex = sourceElement.style.zIndex;
     const originalBg = sourceElement.style.backgroundColor;
+    const originalWidth = sourceElement.style.width;
+    const originalMaxWidth = sourceElement.style.maxWidth;
     
-    sourceElement.style.position = 'fixed';
+    sourceElement.style.position = 'absolute';
+    sourceElement.style.width = '800px'; // Force desktop layout for PDF
+    sourceElement.style.maxWidth = '800px';
     sourceElement.style.top = '0';
     sourceElement.style.left = '0';
     sourceElement.style.zIndex = '9999';
@@ -96,6 +100,8 @@ export async function downloadAsPDF(elementId: string, filename: string) {
       backgroundColor: '#ffffff',
       pixelRatio: scale,
       skipFonts: true, // Crucial for cloudflare font blocks
+      width: 800,
+      height: sourceElement.scrollHeight,
       style: {
         transform: 'scale(1)',
         transformOrigin: 'top left'
@@ -108,6 +114,8 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     sourceElement.style.left = originalLeft;
     sourceElement.style.zIndex = originalZIndex;
     sourceElement.style.backgroundColor = originalBg;
+    sourceElement.style.width = originalWidth;
+    sourceElement.style.maxWidth = originalMaxWidth;
 
     images.forEach(img => {
       if (originalSrcs.has(img)) {
@@ -128,8 +136,8 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     });
 
     // 6. Generate the actual PDF
-    const pdfWidth = sourceElement.offsetWidth * scale;
-    const pdfHeight = sourceElement.offsetHeight * scale;
+    const pdfWidth = 800 * scale;
+    const pdfHeight = sourceElement.scrollHeight * scale;
     
     const pdf = new jsPDF({
       orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
