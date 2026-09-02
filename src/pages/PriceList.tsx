@@ -26,14 +26,13 @@ export default function PriceList() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'price_list'), orderBy('name', 'asc'));
+    const q = query(collection(db, 'products'), orderBy('name', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setItems(data);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'price_list');
-      toast.error('Failed to load price list.');
+      if (!handleFirestoreError(error, OperationType.LIST, 'products')) toast.error('Failed to load price list.');
       setLoading(false);
     });
     return unsubscribe;
@@ -43,7 +42,7 @@ export default function PriceList() {
     e.preventDefault();
     try {
       const id = editId || `item_${Date.now()}`;
-      await setDoc(doc(db, 'price_list', id), {
+      await setDoc(doc(db, 'products', id), {
         name,
         description,
         price: Number(price),
@@ -54,19 +53,17 @@ export default function PriceList() {
       toast.success(editId ? 'Item updated successfully' : 'Item added successfully');
       resetForm();
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'price_list');
-      toast.error('Failed to save item');
+      if (!handleFirestoreError(error, OperationType.CREATE, 'products')) toast.error('Failed to save item');
     }
   };
 
   const deleteItem = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
-        await deleteDoc(doc(db, 'price_list', id));
+        await deleteDoc(doc(db, 'products', id));
         toast.success('Item deleted successfully');
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `price_list/${id}`);
-        toast.error('Failed to delete item');
+        if (!handleFirestoreError(error, OperationType.DELETE, `products/${id}`)) toast.error('Failed to delete item');
       }
     }
   };
@@ -137,7 +134,7 @@ export default function PriceList() {
       'Price': item.price,
       'Added By': item.createdBy
     }));
-    exportToCSV(dataToExport, 'price_list.csv');
+    exportToCSV(dataToExport, 'products.csv');
     toast.success('Price list exported');
   };
 
@@ -164,7 +161,7 @@ export default function PriceList() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
+        {isAdmin && (<div className="lg:col-span-1">
           <form onSubmit={saveItem} className="bg-white p-6 rounded-md border border-gray-200 shadow-sm sticky top-6">
             <h2 className="text-lg font-semibold mb-4">{isEditing ? 'Edit Item' : 'Add New Item'}</h2>
             
@@ -194,9 +191,8 @@ export default function PriceList() {
               </button>
             </div>
           </form>
-        </div>
-
-        <div className="lg:col-span-2">
+        </div>)}
+        <div className={isAdmin ? "lg:col-span-2" : "lg:col-span-3"}>
           <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-x-auto">
             <table className="w-full text-left text-sm min-w-[500px]">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -236,12 +232,12 @@ export default function PriceList() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <button 
+                          {isAdmin && (<button 
                             onClick={() => handleEdit(item)}
                             className="p-1.5 text-gray-500 hover:text-[#0F5132] hover:bg-green-50 rounded transition-colors"
                           >
                             <Edit2 className="w-4 h-4" />
-                          </button>
+                          </button>)}
                           {isAdmin && (
                             <button 
                               onClick={() => deleteItem(item.id)}

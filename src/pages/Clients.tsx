@@ -33,8 +33,7 @@ export default function Clients() {
       setClients(data);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'clients');
-      toast.error('Failed to load clients.');
+      if (!handleFirestoreError(error, OperationType.LIST, 'clients')) toast.error('Failed to load clients.');
       setLoading(false);
     });
     return unsubscribe;
@@ -56,8 +55,7 @@ export default function Clients() {
       toast.success(editId ? 'Client updated successfully' : 'Client added successfully');
       resetForm();
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'clients');
-      toast.error('Failed to save client');
+      if (!handleFirestoreError(error, OperationType.CREATE, 'clients')) toast.error('Failed to save client');
     }
   };
 
@@ -67,8 +65,7 @@ export default function Clients() {
         await deleteDoc(doc(db, 'clients', id));
         toast.success('Client deleted successfully');
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `clients/${id}`);
-        toast.error('Failed to delete client');
+        if (!handleFirestoreError(error, OperationType.DELETE, `clients/${id}`)) toast.error('Failed to delete client');
       }
     }
   };

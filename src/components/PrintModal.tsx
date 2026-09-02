@@ -25,9 +25,9 @@ export function PrintModal({ isOpen, onClose, children, onDownloadPdf, isGenerat
   if (!isOpen) return null;
 
   const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 print:bg-transparent print:static print:z-auto print:inset-auto">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/80 print:bg-transparent print:static print:z-auto print:inset-auto overflow-auto py-10 px-4">
       {/* Non-print UI - Header */}
-      <div className="absolute top-4 right-4 flex items-center gap-4 print:hidden z-10">
+      <div className="fixed top-4 right-4 flex items-center gap-4 print:hidden z-10">
         <button 
           onClick={onDownloadPdf}
           disabled={isGenerating}
@@ -45,7 +45,7 @@ export function PrintModal({ isOpen, onClose, children, onDownloadPdf, isGenerat
       </div>
 
       {/* The A4 Container */}
-      <div className="w-fit min-h-[297mm] bg-white shadow-2xl overflow-y-auto max-h-[90vh] print:max-h-none print:w-full print:h-auto print:shadow-none print:overflow-visible">
+      <div className="w-[800px] shrink-0 min-h-[297mm] bg-white shadow-2xl print:max-h-none print:w-full print:h-auto print:shadow-none print:overflow-visible relative">
         {children}
       </div>
     </div>

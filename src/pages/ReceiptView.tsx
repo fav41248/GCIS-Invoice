@@ -87,7 +87,8 @@ export default function ReceiptView() {
               </div>
               <div>
                 <h3 className='text-3xl font-black text-green-700 tracking-wider'>OFFICIAL RECEIPT</h3>
-                <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Ref: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Ref: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {invoice.createdByEmail}</p>
               </div>
             </div>
             <div className='text-left @2xl:text-right'>
@@ -144,6 +145,7 @@ export default function ReceiptView() {
                  <span className="font-bold">Payment Received in Full</span>
                </div>
                <p className="text-sm text-gray-500">Thank you for your business. This receipt is an acknowledgement of your payment.</p>
+               <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
             </div>
             <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-xl pt-4'>
@@ -188,7 +190,8 @@ export default function ReceiptView() {
               </div>
               <div>
                 <h3 className='text-3xl font-black text-green-700 tracking-wider'>OFFICIAL RECEIPT</h3>
-                <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Ref: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Ref: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {invoice.createdByEmail}</p>
               </div>
             </div>
             <div className='text-left @2xl:text-right'>
@@ -245,6 +248,7 @@ export default function ReceiptView() {
                  <span className="font-bold">Payment Received in Full</span>
                </div>
                <p className="text-sm text-gray-500">Thank you for your business. This receipt is an acknowledgement of your payment.</p>
+               <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
             </div>
             <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-xl pt-4'>

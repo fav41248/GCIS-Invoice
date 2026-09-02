@@ -37,8 +37,7 @@ export default function Invoices() {
       setInvoices(data);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'invoices');
-      toast.error('Failed to load invoices.');
+      if (!handleFirestoreError(error, OperationType.LIST, 'invoices')) toast.error('Failed to load invoices.');
       setLoading(false);
     });
 
@@ -51,8 +50,7 @@ export default function Invoices() {
         await deleteDoc(doc(db, 'invoices', id));
         toast.success('Invoice deleted successfully');
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `invoices/${id}`);
-        toast.error('Failed to delete invoice');
+        if (!handleFirestoreError(error, OperationType.DELETE, `invoices/${id}`)) toast.error('Failed to delete invoice');
       }
     }
   };
@@ -65,8 +63,7 @@ export default function Invoices() {
       });
       toast.success('Invoice marked as paid');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `invoices/${id}`);
-      toast.error('Failed to update invoice');
+      if (!handleFirestoreError(error, OperationType.UPDATE, `invoices/${id}`)) toast.error('Failed to update invoice');
     }
   };
 

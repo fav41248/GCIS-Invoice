@@ -17,40 +17,46 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if true;
-      allow write: if hasAllKeys(['username', 'role', 'name', 'pin', 'createdAt']) &&
+      allow create, update: if hasAllKeys(['username', 'role', 'name', 'pin', 'createdAt']) &&
                    request.resource.data.role in ['admin', 'sales'] &&
                    request.resource.data.username is string &&
                    request.resource.data.pin is string;
+      allow delete: if true;
     }
 
     match /settings/{docId} {
       allow read: if true;
-      allow write: if request.resource.data.name is string;
+      allow create, update: if request.resource.data.name is string;
+      allow delete: if true;
     }
 
     match /invoices/{invoiceId} {
       allow read: if true;
-      allow write: if request.resource.data.invoiceNumber is string &&
+      allow create, update: if request.resource.data.invoiceNumber is string &&
                    request.resource.data.clientName is string &&
                    request.resource.data.grandTotal is number;
+      allow delete: if true;
     }
     
     match /clients/{clientId} {
       allow read: if true;
-      allow write: if request.resource.data.name is string &&
+      allow create, update: if request.resource.data.name is string &&
                    request.resource.data.email is string;
+      allow delete: if true;
     }
     
-    match /price_list/{itemId} {
+    match /products/{itemId} {
       allow read: if true;
-      allow write: if request.resource.data.name is string &&
+      allow create, update: if request.resource.data.name is string &&
                    request.resource.data.price is number;
+      allow delete: if true;
     }
     
     match /knowledge/{docId} {
       allow read: if true;
-      allow write: if request.resource.data.title is string &&
+      allow create, update: if request.resource.data.title is string &&
                    request.resource.data.content is string;
+      allow delete: if true;
     }
     
     // Reject anything else

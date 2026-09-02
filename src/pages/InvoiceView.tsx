@@ -83,7 +83,8 @@ export default function InvoiceView() {
               </div>
               <div>
                 <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
-                <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Invoice #: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {invoice.createdByEmail}</p>
               </div>
             </div>
             <div className='text-left @2xl:text-right'>
@@ -149,12 +150,24 @@ export default function InvoiceView() {
 
           <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
             <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-              {invoice.paymentNotes && (
+              {(invoice.paymentNotes || (invoice.paymentAccounts && invoice.paymentAccounts.length > 0)) && (
                 <>
-                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
-                  <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{invoice.paymentNotes}</p>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
+                  {invoice.paymentAccounts && invoice.paymentAccounts.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                      {invoice.paymentAccounts.map((acc: any) => (
+                        <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                          <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
+                          <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
+                          <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {invoice.paymentNotes && <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{invoice.paymentNotes}</p>}
                 </>
               )}
+              <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
             </div>
             <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-sm'>
@@ -205,7 +218,8 @@ export default function InvoiceView() {
               </div>
               <div>
                 <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
-                <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Invoice #: {invoice.invoiceNumber}</p>
+                <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {invoice.createdByEmail}</p>
               </div>
             </div>
             <div className='text-left @2xl:text-right'>
@@ -271,12 +285,24 @@ export default function InvoiceView() {
 
           <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
             <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-              {invoice.paymentNotes && (
+              {(invoice.paymentNotes || (invoice.paymentAccounts && invoice.paymentAccounts.length > 0)) && (
                 <>
-                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
-                  <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{invoice.paymentNotes}</p>
+                  <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
+                  {invoice.paymentAccounts && invoice.paymentAccounts.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                      {invoice.paymentAccounts.map((acc: any) => (
+                        <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                          <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
+                          <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
+                          <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {invoice.paymentNotes && <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{invoice.paymentNotes}</p>}
                 </>
               )}
+              <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
             </div>
             <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
               <div className='flex justify-between text-sm'>

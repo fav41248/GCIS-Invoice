@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CheckCircle2, Printer, Save } from 'lucide-react';
-import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
@@ -15,18 +15,48 @@ export default function InvoiceGenerator() {
   const { user } = useAuth();
   const [rawInput, setRawInput] = useState('');
   const [clients, setClients] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [billTo, setBillTo] = useState('');
   const [billToAddress, setBillToAddress] = useState('');
   
-  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${new Date().getFullYear()}-0001`);
+
+  useEffect(() => {
+    const fetchLatestInvoiceNumber = async () => {
+      try {
+        const q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'), limit(1));
+        const snapshot = await getDocs(q);
+        
+        let nextNumber = 1;
+        const currentYear = new Date().getFullYear();
+        
+        if (!snapshot.empty) {
+          const lastInvoice = snapshot.docs[0].data();
+          const lastNumberStr = lastInvoice.invoiceNumber;
+          // Assuming format INV-YYYY-XXXX
+          const parts = lastNumberStr.split('-');
+          if (parts.length === 3 && parts[1] === currentYear.toString()) {
+            nextNumber = parseInt(parts[2], 10) + 1;
+          }
+        }
+        
+        const formattedNumber = String(nextNumber).padStart(4, '0');
+        setInvoiceNumber(`INV-${currentYear}-${formattedNumber}`);
+      } catch (error) {
+        console.error("Error fetching latest invoice number:", error);
+      }
+    };
+    fetchLatestInvoiceNumber();
+  }, []);
+
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
   const [currency, setCurrency] = useState('NGN');
   const [vatRate, setVatRate] = useState(0);
   const [notes, setNotes] = useState('');
-  const [selectedAccount, setSelectedAccount] = useState('');
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -45,6 +75,8 @@ export default function InvoiceGenerator() {
     const fetchData = async () => {
       try {
         const clientSnap = await getDocs(collection(db, 'clients'));
+        const productSnap = await getDocs(collection(db, 'products'));
+        setProducts(productSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
         setClients(clientSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         
         const settingsSnap = await getDoc(doc(db, 'settings', 'company'));
@@ -52,9 +84,7 @@ export default function InvoiceGenerator() {
           const data = settingsSnap.data();
           setCompanySettings(data);
           if (data.paymentAccounts && data.paymentAccounts.length > 0) {
-            const acc = data.paymentAccounts[0];
-            setSelectedAccount(acc.id);
-            setNotes(`Please make payments to:\nBank: ${acc.bankName}\nAccount: ${acc.accountNumber}\nName: ${acc.accountName}`);
+            setSelectedAccounts([data.paymentAccounts[0].id]);
           }
         }
       } catch (error) {
@@ -84,15 +114,10 @@ export default function InvoiceGenerator() {
     }
   };
 
-  const handleAccountChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
-    setSelectedAccount(id);
-    if (companySettings?.paymentAccounts) {
-       const acc = companySettings.paymentAccounts.find((a: any) => a.id === id);
-       if (acc) {
-          setNotes(`Please make payments to:\nBank: ${acc.bankName}\nAccount: ${acc.accountNumber}\nName: ${acc.accountName}`);
-       }
-    }
+  const toggleAccount = (id: string) => {
+    setSelectedAccounts(prev => 
+      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
+    );
   };
 
   const parsedItems = useMemo(() => {
@@ -198,6 +223,7 @@ export default function InvoiceGenerator() {
         dueDate,
         status: 'unpaid',
         paymentNotes: notes,
+        paymentAccounts: companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)) || [],
         createdBy: user?.username || 'Unknown',
         createdByEmail: user?.name || 'Unknown',
         createdAt: new Date().toISOString(),
@@ -242,10 +268,28 @@ export default function InvoiceGenerator() {
           </div>
 
           <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
-            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>2. Manual Input</h2>
+            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>2. Add Items</h2>
             <div className='grid grid-cols-12 gap-2 mb-3'>
               <div className='col-span-12'>
-                <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Product Name</label>
+                <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Select from Price List (Optional)</label>
+                <select 
+                  className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] mb-2'
+                  onChange={(e) => {
+                    const p = products.find(prod => prod.id === e.target.value);
+                    if (p) {
+                      setManualDesc(p.name);
+                      setManualPrice(p.price.toString());
+                    }
+                    e.target.value = "";
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>-- Select a Product --</option>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name} - {p.price}</option>)}
+                </select>
+              </div>
+              <div className='col-span-12'>
+                <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Item Name / Description</label>
                 <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualDesc} onChange={(e) => setManualDesc(e.target.value)} placeholder='e.g. Fertilizer' />
               </div>
               <div className='col-span-4'>
@@ -318,14 +362,27 @@ export default function InvoiceGenerator() {
                 <input type='number' min="0" max="100" step="0.1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={vatRate} onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)} />
               </div>
               <div className='col-span-2'>
-                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Payment Account details</label>
-                <select className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] mb-2' value={selectedAccount} onChange={handleAccountChange}>
-                  <option value="" disabled>-- Select Payment Account --</option>
+                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-2'>Payment Accounts</label>
+                <div className="space-y-2 mb-4">
                   {companySettings?.paymentAccounts?.map((acc: any) => (
-                    <option key={acc.id} value={acc.id}>{acc.bankName} - {acc.accountNumber}</option>
+                    <label key={acc.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-2 border border-gray-100 rounded">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedAccounts.includes(acc.id)}
+                        onChange={() => toggleAccount(acc.id)}
+                        className="rounded text-[#0F5132] focus:ring-[#0F5132]"
+                      />
+                      <span className="font-medium">{acc.bankName}</span>
+                      <span className="text-gray-500">- {acc.accountNumber}</span>
+                    </label>
                   ))}
-                </select>
-                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-24' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter payment instructions or additional notes..." />
+                  {(!companySettings?.paymentAccounts || companySettings.paymentAccounts.length === 0) && (
+                    <p className="text-xs text-gray-500">No payment accounts found in Settings.</p>
+                  )}
+                </div>
+
+                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Additional Notes</label>
+                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-20' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter any additional notes..." />
               </div>
             </div>
             
@@ -359,7 +416,8 @@ export default function InvoiceGenerator() {
                 </div>
                 <div>
                   <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
-                  <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoiceNumber}</p>
+                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Invoice #: {invoiceNumber}</p>
+                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {user?.name}</p>
                 </div>
               </div>
               <div className='text-left @2xl:text-right'>
@@ -468,12 +526,24 @@ export default function InvoiceGenerator() {
 
             <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
               <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-                {notes && (
+                {(selectedAccounts.length > 0 || notes) && (
                   <>
-                    <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
-                    <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>
+                    <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
+                    {selectedAccounts.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                        {companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)).map((acc: any) => (
+                          <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                            <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
+                            <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
+                            <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {notes && <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>}
                   </>
                 )}
+                <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
               </div>
               <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
                 <div className='flex justify-between text-sm'>
@@ -534,7 +604,8 @@ export default function InvoiceGenerator() {
                 </div>
                 <div>
                   <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
-                  <p className='text-gray-500 text-sm font-mono uppercase mt-1'>Invoice Number: {invoiceNumber}</p>
+                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Invoice #: {invoiceNumber}</p>
+                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {user?.name}</p>
                 </div>
               </div>
               <div className='text-left @2xl:text-right'>
@@ -643,12 +714,24 @@ export default function InvoiceGenerator() {
 
             <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
               <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-                {notes && (
+                {(selectedAccounts.length > 0 || notes) && (
                   <>
-                    <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Payment Terms & Notes</h5>
-                    <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>
+                    <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
+                    {selectedAccounts.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                        {companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)).map((acc: any) => (
+                          <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                            <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
+                            <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
+                            <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {notes && <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>}
                   </>
                 )}
+                <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
               </div>
               <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
                 <div className='flex justify-between text-sm'>

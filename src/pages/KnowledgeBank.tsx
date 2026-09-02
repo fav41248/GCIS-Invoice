@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { BookOpen, Upload, Search, FileText, Trash2, CheckCircle2, AlertTriangle, Plus } from 'lucide-react';
+import { BookOpen, Upload, Search, FileText, Trash2, Edit2, X, Save, CheckCircle2, AlertTriangle, Plus } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
@@ -11,6 +11,9 @@ export default function KnowledgeBank() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', price: 0, category: '', description: '' });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -96,33 +99,49 @@ export default function KnowledgeBank() {
       }
 
       for (const chunk of chunks) {
-        const batch = writeBatch(db);
-        chunk.forEach(row => {
-          const name = row[nameKey];
-          let price = row[priceKey];
-          
-          if (!name) return; // Skip empty names
-          
-          // Clean up price (remove currency symbols, commas, convert to number)
-          if (typeof price === 'string') {
-            price = parseFloat(price.replace(/[^0-9.-]+/g, ""));
-          }
-          if (isNaN(price)) price = 0;
-
-          const docId = name.toString().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-          const docRef = doc(db, 'products', docId);
-          batch.set(docRef, {
-            name: name.toString(),
-            price: price,
-            category: row['Category'] || row['category'] || 'General',
-            updatedAt: new Date().toISOString()
-          }, { merge: true }); // Merge true allows updating existing without wiping other fields
-        });
-        
         // Retry logic for batch commit to handle transport errors
         let retries = 3;
         while (retries > 0) {
           try {
+            const batch = writeBatch(db);
+            chunk.forEach(row => {
+              const name = row[nameKey];
+              let price = row[priceKey];
+              
+              if (!name) return; // Skip empty names
+              
+              if (typeof price === 'string') {
+                price = parseFloat(price.replace(/[^0-9.-]+/g, ""));
+              }
+              if (isNaN(price)) price = 0;
+
+              const docId = name.toString().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+              const docRef = doc(db, 'products', docId);
+              const productData: any = {
+                name: name.toString(),
+                price: price,
+                updatedAt: new Date().toISOString()
+              };
+              
+              const category = row['Category'] || row['category'];
+              if (category) productData.category = category;
+              else productData.category = 'General';
+
+              const desc = row['Description'] || row['description'] || row['Desc'] || row['desc'];
+              if (desc) productData.description = desc;
+              
+              // Only overwrite with new description if it is provided and detailed
+              // Actually let's capture all extra fields dynamically
+              Object.keys(row).forEach(k => {
+                const lowerK = k.toLowerCase();
+                if (!lowerK.includes('name') && !lowerK.includes('price') && !lowerK.includes('category') && !lowerK.includes('desc') && row[k]) {
+                   productData[k] = row[k];
+                }
+              });
+
+              batch.set(docRef, productData, { merge: true }); 
+            });
+            
             await batch.commit();
             break;
           } catch (err: any) {
@@ -131,7 +150,6 @@ export default function KnowledgeBank() {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
-        // Small delay between chunks to prevent overwhelming the connection
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
@@ -143,12 +161,68 @@ export default function KnowledgeBank() {
     }
   };
 
+
+  const handleEditClick = (product: any) => {
+    setEditingId(product.id);
+    setEditForm({ name: product.name, price: product.price, category: product.category || 'General', description: product.description || '' });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    try {
+      await setDoc(doc(db, 'products', editingId), {
+        name: editForm.name,
+        price: editForm.price,
+        category: editForm.category,
+        description: editForm.description,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setEditingId(null);
+    } catch (err) {
+      console.error(err);
+      alert('Error updating product');
+    }
+  };
+
+  const handleCancelEdit = () => setEditingId(null);
+
   const handleDelete = async (id: string) => {
+
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
       await deleteDoc(doc(db, 'products', id));
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} products?`)) return;
+
+    try {
+      const ids = Array.from(selectedIds);
+      const chunks = [];
+      for (let i = 0; i < ids.length; i += 400) {
+        chunks.push(ids.slice(i, i + 400));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.delete(doc(db, 'products', id));
+        });
+        await batch.commit();
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error(err);
+      alert('Error deleting products.');
     }
   };
 
@@ -197,17 +271,28 @@ export default function KnowledgeBank() {
           </div>
         )}
 
-        <div className="relative max-w-2xl">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
+        <div className="flex justify-between items-center max-w-2xl">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
+              placeholder="Search products by name or category..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-          <input
-            type="text"
-            className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
-            placeholder="Search products by name or category..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          {isAdmin && selectedIds.size > 0 && (
+            <button 
+              onClick={handleBulkDelete}
+              className="ml-4 bg-red-50 text-red-600 px-4 py-3 rounded-md font-medium hover:bg-red-100 transition-colors flex items-center gap-2 whitespace-nowrap shadow-sm border border-red-200"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete ({selectedIds.size})
+            </button>
+          )}
         </div>
       </div>
 
@@ -219,6 +304,22 @@ export default function KnowledgeBank() {
             <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
+                  {isAdmin && (
+                    <th className="px-6 py-4 w-10">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-gray-300 text-[#0F5132] focus:ring-[#0F5132] cursor-pointer"
+                        checked={filteredProducts.length > 0 && selectedIds.size === filteredProducts.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(new Set(filteredProducts.map(p => p.id)));
+                          } else {
+                            setSelectedIds(new Set());
+                          }
+                        }}
+                      />
+                    </th>
+                  )}
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Product Name</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Category</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right">Unit Price</th>
@@ -228,36 +329,101 @@ export default function KnowledgeBank() {
               <tbody className="divide-y divide-gray-100">
                 {filteredProducts.map(product => (
                   <tr key={product.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-[#212529] flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        {product.name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <span className="bg-gray-100 px-2.5 py-1 rounded-md">{product.category || 'General'}</span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="font-bold text-[#0F5132] text-lg">
-                        ₦{product.price?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </span>
-                    </td>
                     {isAdmin && (
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => handleDelete(product.id)}
-                          className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-md transition-colors"
-                          title="Delete Product"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-[#0F5132] focus:ring-[#0F5132] cursor-pointer"
+                          checked={selectedIds.has(product.id)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedIds);
+                            if (e.target.checked) newSet.add(product.id);
+                            else newSet.delete(product.id);
+                            setSelectedIds(newSet);
+                          }}
+                        />
                       </td>
+                    )}
+                    {editingId === product.id ? (
+                      <>
+                        <td className="px-6 py-4">
+                          <input 
+                            type="text" 
+                            className="w-full border border-gray-300 rounded p-1 text-sm outline-none focus:border-[#0F5132]"
+                            value={editForm.name}
+                            onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                          />
+                          <input 
+                            type="text" 
+                            placeholder="Description (Optional)"
+                            className="w-full border border-gray-300 rounded p-1 text-xs outline-none focus:border-[#0F5132] mt-2 text-gray-500"
+                            value={editForm.description}
+                            onChange={(e) => setEditForm({...editForm, description: e.target.value})}
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <input 
+                            type="text" 
+                            className="w-full border border-gray-300 rounded p-1 text-sm outline-none focus:border-[#0F5132]"
+                            value={editForm.category}
+                            onChange={(e) => setEditForm({...editForm, category: e.target.value})}
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <input 
+                            type="number" 
+                            className="w-full border border-gray-300 rounded p-1 text-sm text-right outline-none focus:border-[#0F5132]"
+                            value={editForm.price}
+                            onChange={(e) => setEditForm({...editForm, price: parseFloat(e.target.value) || 0})}
+                          />
+                        </td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 text-right flex justify-end gap-2">
+                            <button onClick={handleSaveEdit} className="text-green-600 hover:bg-green-50 p-2 rounded-md"><Save className="w-4 h-4" /></button>
+                            <button onClick={handleCancelEdit} className="text-gray-500 hover:bg-gray-100 p-2 rounded-md"><X className="w-4 h-4" /></button>
+                          </td>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-[#212529] flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                            <div>
+                               <p>{product.name}</p>
+                               {product.description && <p className="text-gray-500 text-xs mt-1 max-w-sm font-normal">{product.description}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          <span className="bg-gray-100 px-2.5 py-1 rounded-md">{product.category || 'General'}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-bold text-[#0F5132] text-lg">
+                            ₦{product.price?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 text-right">
+                            <button onClick={() => handleEditClick(product)} className="text-gray-500 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-md transition-colors" title="Edit Product">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(product.id)}
+                              className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-md transition-colors"
+                              title="Delete Product"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
+                      </>
                     )}
                   </tr>
                 ))}
                 {filteredProducts.length === 0 && (
                   <tr>
-                    <td colSpan={isAdmin ? 4 : 3} className="px-6 py-12 text-center">
+                    <td colSpan={isAdmin ? 5 : 3} className="px-6 py-12 text-center">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
                         <Search className="w-8 h-8 text-gray-400" />
                       </div>

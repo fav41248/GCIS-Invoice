@@ -1,10 +1,11 @@
 const fs = require('fs');
-let content = fs.readFileSync('src/pages/Invoices.tsx', 'utf8');
-if (!content.includes('lucide-react')) {
-  content = content.replace(
-    /import \{ Link \} from 'react-router-dom';/,
-    `import { Link } from 'react-router-dom';\nimport { Clock, Trash2 } from 'lucide-react';`
-  );
-  fs.writeFileSync('src/pages/Invoices.tsx', content);
-  console.log('Fixed lucide-react import in Invoices.tsx');
-}
+let code = fs.readFileSync('src/pages/InvoiceGenerator.tsx', 'utf8');
+
+// Fix duplicate imports in firestore
+code = code.replace(
+  "import { collection, addDoc, getDocs, query, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';",
+  "import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';"
+);
+
+fs.writeFileSync('src/pages/InvoiceGenerator.tsx', code);
+console.log("Imports fixed");

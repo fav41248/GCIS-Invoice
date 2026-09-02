@@ -19,8 +19,7 @@ export default function Dashboard() {
       setInvoices(data);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'invoices');
-      toast.error('Failed to load dashboard data.');
+      if (!handleFirestoreError(error, OperationType.LIST, 'invoices')) toast.error('Failed to load dashboard data.');
       setLoading(false);
     });
     return unsubscribe;
