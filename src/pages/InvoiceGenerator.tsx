@@ -63,6 +63,8 @@ export default function InvoiceGenerator() {
   const isPrinting = showPrintModal;
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
 
+  const [productSearch, setProductSearch] = useState('');
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [manualItems, setManualItems] = useState<any[]>([]);
   const [manualDesc, setManualDesc] = useState('');
   const [manualQty, setManualQty] = useState(1);
@@ -270,23 +272,44 @@ export default function InvoiceGenerator() {
           <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>2. Add Items</h2>
             <div className='grid grid-cols-12 gap-2 mb-3'>
-              <div className='col-span-12'>
+              <div className='col-span-12 relative'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Select from Price List (Optional)</label>
-                <select 
+                <input
+                  type="text"
+                  placeholder="Search and select a product..."
                   className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] mb-2'
+                  value={productSearch}
+                  onFocus={() => setShowProductDropdown(true)}
                   onChange={(e) => {
-                    const p = products.find(prod => prod.id === e.target.value);
-                    if (p) {
-                      setManualDesc(p.name);
-                      setManualPrice(p.price.toString());
-                    }
-                    e.target.value = "";
+                    setProductSearch(e.target.value);
+                    setShowProductDropdown(true);
                   }}
-                  defaultValue=""
-                >
-                  <option value="" disabled>-- Select a Product --</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name} - {p.price}</option>)}
-                </select>
+                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
+                />
+                {showProductDropdown && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto mt-[-8px]">
+                    {products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).map(p => {
+                      const sym = currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '';
+                      return (
+                      <div 
+                        key={p.id} 
+                        className="p-2 text-sm hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"
+                        onClick={() => {
+                          setManualDesc(p.name);
+                          setManualPrice(p.price.toString());
+                          setProductSearch('');
+                          setShowProductDropdown(false);
+                        }}
+                      >
+                        <div className="font-medium text-gray-800">{p.name}</div>
+                        <div className="text-xs text-gray-500">Unit: {sym}{Number(p.price).toLocaleString()} {p.wholesalePrice ? `| Wholesale: ${sym}${Number(p.wholesalePrice).toLocaleString()}` : ''}</div>
+                      </div>
+                    )})}
+                    {products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                      <div className="p-2 text-sm text-gray-500 text-center">No products found</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className='col-span-12'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Item Name / Description</label>

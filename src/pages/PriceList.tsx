@@ -17,6 +17,7 @@ export default function PriceList() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [wholesalePrice, setWholesalePrice] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('name');
@@ -42,13 +43,19 @@ export default function PriceList() {
     e.preventDefault();
     try {
       const id = editId || `item_${Date.now()}`;
-      await setDoc(doc(db, 'products', id), {
+      const itemData: any = {
         name,
         description,
         price: Number(price),
         updatedAt: new Date().toISOString(),
         createdBy: user?.username
-      }, { merge: true });
+      };
+      if (wholesalePrice !== '') {
+        itemData.wholesalePrice = Number(wholesalePrice);
+      } else {
+        itemData.wholesalePrice = null; // Clear it if emptied
+      }
+      await setDoc(doc(db, 'products', id), itemData, { merge: true });
       
       toast.success(editId ? 'Item updated successfully' : 'Item added successfully');
       resetForm();
@@ -131,7 +138,8 @@ export default function PriceList() {
     const dataToExport = filteredAndSortedItems.map(item => ({
       'Service/Product Name': item.name,
       'Description': item.description,
-      'Price': item.price,
+      'Wholesale Price': item.wholesalePrice || '',
+      'Unit Price': item.price,
       'Added By': item.createdBy
     }));
     exportToCSV(dataToExport, 'products.csv');
@@ -175,7 +183,11 @@ export default function PriceList() {
                 <textarea rows={2} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={description} onChange={e => setDescription(e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Price (₦)</label>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Wholesale Price (₦) - Optional</label>
+                <input type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={wholesalePrice} onChange={e => setWholesalePrice(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Unit Price (₦)</label>
                 <input required type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={price} onChange={e => setPrice(e.target.value)} />
               </div>
             </div>
@@ -200,8 +212,11 @@ export default function PriceList() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
                     <div className="flex items-center gap-1">Item Details <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
+                  <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('wholesalePrice')}>
+                    <div className="flex items-center gap-1">Wholesale <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                  </th>
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('price')}>
-                    <div className="flex items-center gap-1">Price <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                    <div className="flex items-center gap-1">Unit Price <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-right">Actions</th>
                 </tr>
@@ -217,6 +232,9 @@ export default function PriceList() {
                       <td className="px-6 py-4">
                         <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
                       </td>
+                      <td className="px-6 py-4">
+                        <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
+                      </td>
                       <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div></td>
                     </tr>
                   ))
@@ -227,7 +245,10 @@ export default function PriceList() {
                         <p className="font-semibold text-gray-900">{item.name}</p>
                         {item.description && <p className="text-gray-500 text-xs mt-1 max-w-sm">{item.description}</p>}
                       </td>
-                      <td className="px-6 py-4 font-mono font-medium">
+                      <td className="px-6 py-4 font-mono font-medium text-gray-500">
+                        {item.wholesalePrice ? `₦${Number(item.wholesalePrice).toLocaleString()}` : '-'}
+                      </td>
+                      <td className="px-6 py-4 font-mono font-bold text-[#0F5132]">
                         ₦{Number(item.price).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-right">

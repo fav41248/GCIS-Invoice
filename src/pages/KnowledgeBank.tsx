@@ -12,7 +12,7 @@ export default function KnowledgeBank() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', price: 0, category: '', description: '' });
+  const [editForm, setEditForm] = useState({ name: '', price: 0, wholesalePrice: 0, category: '', description: '' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const [isUploading, setIsUploading] = useState(false);
@@ -26,6 +26,9 @@ export default function KnowledgeBank() {
       // Sort alphabetically
       data.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
       setProducts(data);
+      setLoading(false);
+    }, (error) => {
+      console.warn("KnowledgeBank onSnapshot error:", error);
       setLoading(false);
     });
     return unsubscribe;
@@ -85,7 +88,8 @@ export default function KnowledgeBank() {
       const keys = Object.keys(firstRow);
       
       const nameKey = keys.find(k => k.toLowerCase().includes('name') || k.toLowerCase().includes('product') || k.toLowerCase().includes('item'));
-      const priceKey = keys.find(k => k.toLowerCase().includes('price') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount'));
+      const wholesalePriceKey = keys.find(k => k.toLowerCase().includes('wholesale') && (k.toLowerCase().includes('price') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount')));
+      const priceKey = keys.find(k => (k.toLowerCase().includes('price') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount')) && k !== wholesalePriceKey);
 
       if (!nameKey || !priceKey) {
         throw new Error(`Could not automatically detect 'Name' and 'Price' columns. Found columns: ${keys.join(', ')}`);
@@ -107,6 +111,7 @@ export default function KnowledgeBank() {
             chunk.forEach(row => {
               const name = row[nameKey];
               let price = row[priceKey];
+              let wholesalePrice = wholesalePriceKey ? row[wholesalePriceKey] : undefined;
               
               if (!name) return; // Skip empty names
               
@@ -114,6 +119,11 @@ export default function KnowledgeBank() {
                 price = parseFloat(price.replace(/[^0-9.-]+/g, ""));
               }
               if (isNaN(price)) price = 0;
+              
+              if (typeof wholesalePrice === 'string') {
+                wholesalePrice = parseFloat(wholesalePrice.replace(/[^0-9.-]+/g, ""));
+              }
+              if (wholesalePrice !== undefined && isNaN(wholesalePrice)) wholesalePrice = 0;
 
               const docId = name.toString().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
               const docRef = doc(db, 'products', docId);
@@ -122,6 +132,9 @@ export default function KnowledgeBank() {
                 price: price,
                 updatedAt: new Date().toISOString()
               };
+              if (wholesalePrice !== undefined) {
+                productData.wholesalePrice = wholesalePrice;
+              }
               
               const category = row['Category'] || row['category'];
               if (category) productData.category = category;
@@ -164,7 +177,7 @@ export default function KnowledgeBank() {
 
   const handleEditClick = (product: any) => {
     setEditingId(product.id);
-    setEditForm({ name: product.name, price: product.price, category: product.category || 'General', description: product.description || '' });
+    setEditForm({ name: product.name, price: product.price, wholesalePrice: product.wholesalePrice || 0, category: product.category || 'General', description: product.description || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -173,6 +186,7 @@ export default function KnowledgeBank() {
       await setDoc(doc(db, 'products', editingId), {
         name: editForm.name,
         price: editForm.price,
+        wholesalePrice: editForm.wholesalePrice,
         category: editForm.category,
         description: editForm.description,
         updatedAt: new Date().toISOString()
@@ -322,6 +336,7 @@ export default function KnowledgeBank() {
                   )}
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Product Name</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Category</th>
+                  <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right">Wholesale Price</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right">Unit Price</th>
                   {isAdmin && <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right w-20">Actions</th>}
                 </tr>
@@ -373,8 +388,18 @@ export default function KnowledgeBank() {
                           <input 
                             type="number" 
                             className="w-full border border-gray-300 rounded p-1 text-sm text-right outline-none focus:border-[#0F5132]"
+                            value={editForm.wholesalePrice}
+                            onChange={(e) => setEditForm({...editForm, wholesalePrice: parseFloat(e.target.value) || 0})}
+                            placeholder="Wholesale"
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <input 
+                            type="number" 
+                            className="w-full border border-gray-300 rounded p-1 text-sm text-right outline-none focus:border-[#0F5132]"
                             value={editForm.price}
                             onChange={(e) => setEditForm({...editForm, price: parseFloat(e.target.value) || 0})}
+                            placeholder="Unit"
                           />
                         </td>
                         {isAdmin && (
@@ -397,6 +422,11 @@ export default function KnowledgeBank() {
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
                           <span className="bg-gray-100 px-2.5 py-1 rounded-md">{product.category || 'General'}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-semibold text-gray-600">
+                            {product.wholesalePrice ? `₦${product.wholesalePrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '-'}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <span className="font-bold text-[#0F5132] text-lg">
@@ -423,7 +453,7 @@ export default function KnowledgeBank() {
                 ))}
                 {filteredProducts.length === 0 && (
                   <tr>
-                    <td colSpan={isAdmin ? 5 : 3} className="px-6 py-12 text-center">
+                    <td colSpan={isAdmin ? 6 : 4} className="px-6 py-12 text-center">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
                         <Search className="w-8 h-8 text-gray-400" />
                       </div>
