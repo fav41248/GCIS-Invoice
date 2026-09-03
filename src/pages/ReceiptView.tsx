@@ -68,15 +68,13 @@ export default function ReceiptView() {
 <div id="receipt-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
           
           {/* PAID STAMP */}
-          <div className="absolute top-32 right-1/4 opacity-10 pointer-events-none rotate-12 print:opacity-20">
-            <div className="border-8 border-green-600 text-green-600 text-6xl font-black uppercase tracking-widest p-4 rounded-md">
-              PAID
-            </div>
+          <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+            <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-green-500 text-green-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>PAID</div>
           </div>
 
           <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-32 sm:w-40 h-24 sm:h-32 flex items-center justify-center shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt="Logo" 
@@ -144,7 +142,7 @@ export default function ReceiptView() {
                  <CheckCircle2 className="w-5 h-5" />
                  <span className="font-bold">Payment Received in Full</span>
                </div>
-               <p className="text-sm text-gray-500">Thank you for your business. This receipt is an acknowledgement of your payment.</p>
+               <p className="text-sm text-gray-500">Thank you for choosing us. We look forward to serving you again.</p>
                <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
             </div>
             <div className='w-full @2xl:w-72 space-y-3 shrink-0'>
@@ -171,15 +169,13 @@ export default function ReceiptView() {
         <div id="receipt-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
           
           {/* PAID STAMP */}
-          <div className="absolute top-32 right-1/4 opacity-10 pointer-events-none rotate-12 print:opacity-20">
-            <div className="border-8 border-green-600 text-green-600 text-6xl font-black uppercase tracking-widest p-4 rounded-md">
-              PAID
-            </div>
+          <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+            <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-green-500 text-green-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>PAID</div>
           </div>
 
           <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-32 sm:w-40 h-24 sm:h-32 flex items-center justify-center shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt="Logo" 
@@ -247,7 +243,7 @@ export default function ReceiptView() {
                  <CheckCircle2 className="w-5 h-5" />
                  <span className="font-bold">Payment Received in Full</span>
                </div>
-               <p className="text-sm text-gray-500">Thank you for your business. This receipt is an acknowledgement of your payment.</p>
+               <p className="text-sm text-gray-500">Thank you for choosing us. We look forward to serving you again.</p>
                <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-500 italic">Please note: All payments are non-refundable once the order has been confirmed.</div>
             </div>
             <div className='w-full @2xl:w-72 space-y-3 shrink-0'>

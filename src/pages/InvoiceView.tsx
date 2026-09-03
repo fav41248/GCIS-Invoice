@@ -67,10 +67,21 @@ export default function InvoiceView() {
       <div className='flex-1 overflow-x-auto overflow-y-auto bg-[#F8F9FA] p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block print:bg-white'>
         {showPrintModal ? null : (
 <div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+          {/* Center UNPAID Stamp */}
+          {invoice?.status === 'unpaid' && (
+             <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+               <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-red-500 text-red-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>UNPAID</div>
+             </div>
+          )}
+          {invoice?.status === 'paid' && (
+             <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+               <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-green-500 text-green-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>PAID</div>
+             </div>
+          )}
           
           <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-32 sm:w-40 h-24 sm:h-32 flex items-center justify-center shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt={settings?.name || "Logo"}
@@ -202,10 +213,21 @@ export default function InvoiceView() {
         }}
       >
         <div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+          {/* Center UNPAID Stamp */}
+          {invoice?.status === 'unpaid' && (
+             <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+               <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-red-500 text-red-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>UNPAID</div>
+             </div>
+          )}
+          {invoice?.status === 'paid' && (
+             <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+               <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-green-500 text-green-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>PAID</div>
+             </div>
+          )}
           
           <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
             <div className='flex items-center gap-5'>
-              <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+              <div className='w-32 sm:w-40 h-24 sm:h-32 flex items-center justify-center shrink-0 overflow-hidden'>
                 <img 
                   src={settings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                   alt={settings?.name || "Logo"}

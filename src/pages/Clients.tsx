@@ -151,10 +151,12 @@ export default function Clients() {
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
           </div>
-          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors whitespace-nowrap">
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
+          {isAdmin && (
+            <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors whitespace-nowrap">
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          )}
         </div>
       </div>
 

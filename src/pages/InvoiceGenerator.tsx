@@ -210,20 +210,31 @@ export default function InvoiceGenerator() {
 
     setIsSaving(true);
     try {
+      const itemsWithWholesale = allItems.map(item => {
+         const matchedProduct = products.find(p => (p.name || '').toLowerCase() === (item.description || '').toLowerCase());
+         const wp = matchedProduct?.wholesalePrice || 0;
+         return { ...item, wholesalePrice: wp, wholesaleTotal: wp * item.qty, profit: (item.price - wp) * item.qty };
+      });
+      const wholesaleTotal = itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
+      const profitTotal = itemsWithWholesale.reduce((acc, item) => acc + (item.profit || 0), 0);
+
       const invoiceData = {
         invoiceNumber,
         clientId: selectedClientId || 'unknown',
         clientName: billTo,
         clientAddress: billToAddress,
-        items: allItems,
+        items: itemsWithWholesale,
         subtotal,
         vatRate,
         vatAmount,
         grandTotal,
+        wholesaleTotal,
+        profitTotal,
         currency,
         issueDate,
         dueDate,
         status: 'unpaid',
+        profitStatus: 'unpaid', // unpaid, paid, confirmed
         paymentNotes: notes,
         paymentAccounts: companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)) || [],
         createdBy: user?.username || 'Unknown',
@@ -424,9 +435,14 @@ export default function InvoiceGenerator() {
           <div className='flex-1 overflow-x-auto overflow-y-auto p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block'>
             {showPrintModal ? null : (
 <div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+            {/* Center UNPAID Stamp */}
+            <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+              <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-red-500 text-red-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>UNPAID</div>
+            </div>
+            
             <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
               <div className='flex items-center gap-5'>
-                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+                <div className='w-32 sm:w-40 h-24 sm:h-32 flex items-center justify-center shrink-0 overflow-hidden'>
                   <img 
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}
@@ -612,9 +628,14 @@ export default function InvoiceGenerator() {
         }}
       >
         <div id="invoice-preview" className='@container bg-white w-full max-w-[800px] mx-auto shrink-0 p-4 @2xl:p-10 shadow-sm border border-gray-200 relative print:shadow-none print:border-none print:p-0 print:overflow-visible print:block print:w-full print:min-w-0 print:max-w-none'>
+            {/* Center UNPAID Stamp */}
+            <div className='absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden'>
+              <div className='rotate-[-30deg] opacity-[0.15] border-[6px] border-red-500 text-red-500 px-8 py-4 font-black text-6xl @2xl:text-8xl uppercase tracking-widest rounded-xl'>UNPAID</div>
+            </div>
+            
             <div className='flex flex-col @2xl:flex-row justify-between items-start mb-6 @2xl:mb-10 gap-6 @2xl:gap-0'>
               <div className='flex items-center gap-5'>
-                <div className='w-20 min-w-[5rem] h-20 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0 overflow-hidden'>
+                <div className='w-32 sm:w-40 h-24 sm:h-32 flex items-center justify-center shrink-0 overflow-hidden'>
                   <img 
                     src={companySettings?.logoUrl || "https://res.cloudinary.com/duwpkzkg1/image/upload/Green_Collar_qf1snd.png"}
                     alt={companySettings?.name || "Logo"}

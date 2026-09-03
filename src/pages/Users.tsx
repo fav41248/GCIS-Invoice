@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Edit2, Save, X } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Save, X, FileText } from 'lucide-react';
 
 export default function Users() {
   const { isAdmin } = useAuth();
@@ -22,6 +22,11 @@ export default function Users() {
   const [editData, setEditData] = useState({ name: '', username: '', pin: '' });
   const [showPins, setShowPins] = useState<Record<string, boolean>>({});
 
+  const [selectedUserForReport, setSelectedUserForReport] = useState<any>(null);
+  const [userInvoices, setUserInvoices] = useState<any[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+
   const startEdit = (user: any) => {
     setEditingId(user.id);
     setEditData({ name: user.name, username: user.username, pin: user.pin || '' });
@@ -34,6 +39,7 @@ export default function Users() {
   const saveEdit = async (id: string, user: any) => {
     try {
       const normalizedUsername = editData.username.toLowerCase().trim();
+      
       if (normalizedUsername !== id) {
         await setDoc(doc(db, 'users', normalizedUsername), {
           ...user,
@@ -55,8 +61,26 @@ export default function Users() {
     }
   };
 
+  const openReportModal = async (user: any) => {
+    setSelectedUserForReport(user);
+    setShowReportModal(true);
+    setLoadingReport(true);
+    try {
+      const q = query(collection(db, 'invoices'), where('createdBy', '==', user.username));
+      const querySnapshot = await getDocs(q);
+      const invoicesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      invoicesData.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setUserInvoices(invoicesData);
+    } catch (error) {
+      if (!handleFirestoreError(error, OperationType.LIST, 'invoices')) toast.error('Failed to load user invoices');
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAdmin) return;
+
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -66,14 +90,17 @@ export default function Users() {
       handleFirestoreError(error, OperationType.LIST, 'users');
       setLoading(false);
     });
+
     return unsubscribe;
   }, [isAdmin]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
+
     setIsCreating(true);
     setError('');
+
     try {
       const normalizedUsername = username.toLowerCase().trim();
       
@@ -186,9 +213,14 @@ export default function Users() {
                        <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-50 text-blue-700'}`}>{u.role}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => startEdit(u)} className="text-[#0F5132] hover:text-[#0F5132] font-medium flex items-center gap-1 justify-end w-full">
-                        <Edit2 className="w-4 h-4" /> Edit
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button onClick={() => openReportModal(u)} className="text-[#0F5132] hover:bg-green-50 p-1.5 rounded transition-colors flex items-center gap-1 font-medium" title="View Sales Report">
+                          <FileText className="w-4 h-4" /> Report
+                        </button>
+                        <button onClick={() => startEdit(u)} className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-1.5 rounded transition-colors flex items-center gap-1 font-medium" title="Edit User">
+                          <Edit2 className="w-4 h-4" /> Edit
+                        </button>
+                      </div>
                     </td>
                   </>
                 )}
@@ -200,6 +232,99 @@ export default function Users() {
           </tbody>
         </table>
       </div>
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">
+                Sales Report: {selectedUserForReport?.name} <span className="text-gray-500 font-normal text-base">(@{selectedUserForReport?.username})</span>
+              </h2>
+              <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+              {loadingReport ? (
+                <div className="flex justify-center items-center h-40">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0F5132]"></div>
+                </div>
+              ) : userInvoices.length > 0 ? (
+                <div className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm min-w-[800px]">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 font-bold text-gray-600">Invoice #</th>
+                          <th className="px-4 py-3 font-bold text-gray-600">Date</th>
+                          <th className="px-4 py-3 font-bold text-gray-600">Client</th>
+                          <th className="px-4 py-3 font-bold text-gray-600 text-right">Wholesale Cost</th>
+                          <th className="px-4 py-3 font-bold text-gray-600 text-right">Sale Amount</th>
+                          <th className="px-4 py-3 font-bold text-gray-600 text-right">Profit</th>
+                          <th className="px-4 py-3 font-bold text-gray-600">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {userInvoices.map(inv => (
+                          <tr key={inv.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-mono text-gray-600">{inv.invoiceNumber}</td>
+                            <td className="px-4 py-3 text-gray-500">{inv.issueDate}</td>
+                            <td className="px-4 py-3 font-medium text-gray-900">{inv.clientName}</td>
+                            <td className="px-4 py-3 text-right text-gray-600 font-mono">
+                              ₦{(inv.wholesaleTotal || 0).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900 font-mono">
+                              ₦{(inv.grandTotal || 0).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-[#0F5132] font-mono">
+                              ₦{(inv.profitTotal || 0).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                                {inv.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50 border-t border-gray-200 font-bold">
+                        <tr>
+                          <td colSpan={3} className="px-4 py-4 text-right text-gray-600 uppercase tracking-wider text-xs">Total Summaries</td>
+                          <td className="px-4 py-4 text-right text-gray-900 font-mono text-base">
+                            ₦{userInvoices.reduce((sum, inv) => sum + (inv.wholesaleTotal || 0), 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-4 text-right text-gray-900 font-mono text-base">
+                            ₦{userInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-4 text-right text-[#0F5132] font-mono text-base">
+                            ₦{userInvoices.reduce((sum, inv) => sum + (inv.profitTotal || 0), 0).toLocaleString()}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500 bg-white rounded-md border border-gray-200">
+                  <p>No invoices generated by this user yet.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-gray-200 bg-white flex justify-end">
+              <button 
+                onClick={() => setShowReportModal(false)}
+                className="px-6 py-2 border border-gray-300 rounded-md font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Close Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
