@@ -17,9 +17,10 @@ export default function Users() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
+  const [phone, setPhone] = useState('');
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editData, setEditData] = useState({ name: '', username: '', pin: '' });
+  const [editData, setEditData] = useState({ name: '', username: '', pin: '', phone: '' });
   const [showPins, setShowPins] = useState<Record<string, boolean>>({});
 
   const [selectedUserForReport, setSelectedUserForReport] = useState<any>(null);
@@ -46,13 +47,15 @@ export default function Users() {
           name: editData.name,
           username: normalizedUsername,
           pin: editData.pin,
+          phone: editData.phone,
         });
         await deleteDoc(doc(db, 'users', id));
       } else {
         await updateDoc(doc(db, 'users', id), {
           name: editData.name,
           username: normalizedUsername,
-          pin: editData.pin
+          pin: editData.pin,
+          phone: editData.phone
         });
       }
       setEditingId(null);
@@ -109,11 +112,12 @@ export default function Users() {
         username: normalizedUsername,
         role: 'sales',
         pin: pin,
+        phone: phone,
         createdAt: new Date().toISOString()
       });
       
       setShowAdd(false);
-      setName(''); setUsername(''); setPin('');
+      setName(''); setUsername(''); setPin(''); setPhone('');
     } catch (err: any) {
       setError(err.message || 'Failed to authorize user.');
     } finally {
@@ -169,6 +173,7 @@ export default function Users() {
               <th className="px-6 py-4 font-bold text-gray-600">Name</th>
               <th className="px-6 py-4 font-bold text-gray-600">Username</th>
               <th className="px-6 py-4 font-bold text-gray-600">Password / PIN</th>
+              <th className="px-6 py-4 font-bold text-gray-600">Phone</th>
               <th className="px-6 py-4 font-bold text-gray-600">Role</th>
               <th className="px-6 py-4 font-bold text-gray-600 text-right">Actions</th>
             </tr>
@@ -186,6 +191,9 @@ export default function Users() {
                     </td>
                     <td className="px-6 py-4">
                       <input className="w-full border border-gray-300 rounded p-1.5 text-sm" value={editData.pin} onChange={e => setEditData({...editData, pin: e.target.value})} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <input className="w-full border border-gray-300 rounded p-1.5 text-sm" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} placeholder="Phone" />
                     </td>
                     <td className="px-6 py-4">
                        <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>{u.role}</span>

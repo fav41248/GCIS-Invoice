@@ -80,6 +80,7 @@ export default function PriceList() {
     setName(item.name);
     setDescription(item.description || '');
     setPrice(item.price.toString());
+    setWholesalePrice(item.wholesalePrice?.toString() || '');
     setIsEditing(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -89,6 +90,7 @@ export default function PriceList() {
     setName('');
     setDescription('');
     setPrice('');
+    setWholesalePrice('');
     setIsEditing(false);
   };
 
@@ -155,7 +157,7 @@ export default function PriceList() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text"
-              placeholder="Search services..."
+              placeholder="Search products..."
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#198754] outline-none"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}

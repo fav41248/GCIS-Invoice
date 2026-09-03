@@ -6,6 +6,7 @@ export interface CustomUser {
   username: string;
   name: string;
   role: 'admin' | 'sales';
+  phone?: string;
 }
 
 interface AuthContextType {

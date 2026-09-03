@@ -102,7 +102,7 @@ export default function InvoiceView() {
                 <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
               <p className='text-sm text-gray-500 whitespace-pre-wrap'>{settings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
               {settings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{settings.email}</p>}
-              {settings?.phone && <p className='text-sm text-gray-500 mt-1'>{settings.phone}</p>}
+              {(invoice.repPhone || settings?.phone) && <p className='text-sm text-gray-500 mt-1'>{invoice.repPhone || settings?.phone}</p>}
             </div>
           </div>
           
@@ -248,7 +248,7 @@ export default function InvoiceView() {
                 <h4 className='font-bold text-lg text-[#212529]'>{settings?.name || 'Green Collar Integrated Services'}</h4>
               <p className='text-sm text-gray-500 whitespace-pre-wrap'>{settings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
               {settings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{settings.email}</p>}
-              {settings?.phone && <p className='text-sm text-gray-500 mt-1'>{settings.phone}</p>}
+              {(invoice.repPhone || settings?.phone) && <p className='text-sm text-gray-500 mt-1'>{invoice.repPhone || settings?.phone}</p>}
             </div>
           </div>
           

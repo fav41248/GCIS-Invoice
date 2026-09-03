@@ -239,6 +239,7 @@ export default function InvoiceGenerator() {
         paymentAccounts: companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)) || [],
         createdBy: user?.username || 'Unknown',
         createdByEmail: user?.name || 'Unknown',
+        repPhone: user?.phone || '',
         createdAt: new Date().toISOString(),
         paidAt: ''
       };
@@ -463,7 +464,7 @@ export default function InvoiceGenerator() {
                 <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
                 <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
                 {companySettings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{companySettings.email}</p>}
-                {companySettings?.phone && <p className='text-sm text-gray-500 mt-1'>{companySettings.phone}</p>}
+                {(user?.phone || companySettings?.phone) && <p className='text-sm text-gray-500 mt-1'>{user?.phone || companySettings?.phone}</p>}
               </div>
             </div>
             
@@ -656,7 +657,7 @@ export default function InvoiceGenerator() {
                 <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
                 <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
                 {companySettings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{companySettings.email}</p>}
-                {companySettings?.phone && <p className='text-sm text-gray-500 mt-1'>{companySettings.phone}</p>}
+                {(user?.phone || companySettings?.phone) && <p className='text-sm text-gray-500 mt-1'>{user?.phone || companySettings?.phone}</p>}
               </div>
             </div>
             
