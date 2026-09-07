@@ -16,16 +16,23 @@ export default function PriceList() {
   const [editId, setEditId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
   const [price, setPrice] = useState('');
   const [wholesalePriceBronze, setWholesalePriceBronze] = useState('');
   const [wholesalePriceSilver, setWholesalePriceSilver] = useState('');
   const [wholesalePriceGold, setWholesalePriceGold] = useState('');
 
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 25;
+
+  const categories = useMemo(() => {
+    const cats = items.map(item => item.category).filter(Boolean);
+    return [...new Set(cats)].sort() as string[];
+  }, [items]);
 
   useEffect(() => {
     if (!user) return;
@@ -48,6 +55,7 @@ export default function PriceList() {
       const itemData: any = {
         name,
         description,
+        category,
         price: Number(price),
         updatedAt: new Date().toISOString(),
         createdBy: user?.username
@@ -82,6 +90,7 @@ export default function PriceList() {
     setEditId(item.id);
     setName(item.name);
     setDescription(item.description || '');
+    setCategory(item.category || '');
     setPrice(item.price.toString());
     setWholesalePriceBronze(item.wholesalePriceBronze?.toString() || item.wholesalePrice?.toString() || '');
     setWholesalePriceSilver(item.wholesalePriceSilver?.toString() || item.wholesalePrice?.toString() || '');
@@ -94,6 +103,7 @@ export default function PriceList() {
     setEditId('');
     setName('');
     setDescription('');
+    setCategory('');
     setPrice('');
     setWholesalePriceBronze('');
     setWholesalePriceSilver('');
@@ -112,6 +122,10 @@ export default function PriceList() {
 
   const filteredAndSortedItems = useMemo(() => {
     let result = [...items];
+    if (selectedCategory) {
+      result = result.filter(item => item.category === selectedCategory);
+    }
+    
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       result = result.filter(item => 
@@ -138,7 +152,7 @@ export default function PriceList() {
     });
     
     return result;
-  }, [items, searchTerm, sortField, sortOrder]);
+  }, [items, searchTerm, selectedCategory, sortField, sortOrder]);
 
   const totalPages = Math.ceil(filteredAndSortedItems.length / itemsPerPage);
   const currentItems = filteredAndSortedItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -147,6 +161,7 @@ export default function PriceList() {
     const dataToExport = filteredAndSortedItems.map(item => {
       const exportData: any = {
         'Service/Product Name': item.name,
+        'Category': item.category || '',
         'Description': item.description,
       };
 
@@ -174,8 +189,18 @@ export default function PriceList() {
     <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold">Price List</h1>
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
+        <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+          <select
+            className="w-full md:w-40 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#198754] outline-none"
+            value={selectedCategory}
+            onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
+          >
+            <option value="">All Categories</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          <div className="relative flex-1 md:w-64 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text"
@@ -203,6 +228,10 @@ export default function PriceList() {
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Service / Product Name</label>
                 <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={name} onChange={e => setName(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Category</label>
+                <input type="text" placeholder="e.g. Inverter, Solar Panel" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={category} onChange={e => setCategory(e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Description (Optional)</label>
@@ -246,6 +275,9 @@ export default function PriceList() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
                     <div className="flex items-center gap-1">Item Details <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
+                  <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('category')}>
+                    <div className="flex items-center gap-1">Category <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                  </th>
                   {isAdmin ? (
                     <th className="px-6 py-4 font-bold text-gray-600">
                       <div className="flex items-center gap-1">Wholesale (B/S/G)</div>
@@ -258,7 +290,9 @@ export default function PriceList() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('price')}>
                     <div className="flex items-center gap-1">Unit Price <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
-                  <th className="px-6 py-4 font-bold text-gray-600 text-right">Actions</th>
+                  {isAdmin && (
+                    <th className="px-6 py-4 font-bold text-gray-600 text-right">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -270,12 +304,17 @@ export default function PriceList() {
                         <div className="h-4 bg-gray-100 rounded w-64 animate-pulse"></div>
                       </td>
                       <td className="px-6 py-4">
+                        <div className="h-5 bg-gray-200 rounded w-24 animate-pulse"></div>
+                      </td>
+                      <td className="px-6 py-4">
                         <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
                       </td>
-                      <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div></td>
+                      {isAdmin && (
+                        <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div></td>
+                      )}
                     </tr>
                   ))
                 ) : currentItems.length > 0 ? (
@@ -284,6 +323,11 @@ export default function PriceList() {
                       <td className="px-6 py-4">
                         <p className="font-semibold text-gray-900">{item.name}</p>
                         {item.description && <p className="text-gray-500 text-xs mt-1 max-w-sm">{item.description}</p>}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                          {item.category || '-'}
+                        </span>
                       </td>
                       {isAdmin ? (
                         <td className="px-6 py-4 font-mono font-medium text-gray-500 text-xs whitespace-nowrap">
@@ -301,29 +345,29 @@ export default function PriceList() {
                       <td className="px-6 py-4 font-mono font-bold text-[#0F5132]">
                         ₦{Number(item.price).toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          {isAdmin && (<button 
-                            onClick={() => handleEdit(item)}
-                            className="p-1.5 text-gray-500 hover:text-[#0F5132] hover:bg-green-50 rounded transition-colors"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>)}
-                          {isAdmin && (
+                      {isAdmin && (
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => handleEdit(item)}
+                              className="p-1.5 text-gray-500 hover:text-[#0F5132] hover:bg-green-50 rounded transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
                             <button 
                               onClick={() => deleteItem(item.id)}
                               className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          )}
-                        </div>
-                      </td>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center">
+                    <td colSpan={isAdmin ? 5 : 4} className="px-6 py-12 text-center">
                        <div className="flex flex-col items-center justify-center text-gray-500">
                          <Tag className="w-12 h-12 text-gray-300 mb-3" />
                          <p className="text-lg font-medium text-gray-900 mb-1">{searchTerm ? "No matching items found" : "No price list items yet"}</p>

@@ -67,7 +67,7 @@ export default function InvoiceGenerator() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [manualItems, setManualItems] = useState<any[]>([]);
   const [manualDesc, setManualDesc] = useState('');
-  const [manualQty, setManualQty] = useState(1);
+  const [manualQty, setManualQty] = useState(0);
   const [manualPrice, setManualPrice] = useState('');
 
   const [itemOverrides, setItemOverrides] = useState<Record<string, {description?: string, qty?: number, price?: number}>>({});
@@ -277,18 +277,7 @@ export default function InvoiceGenerator() {
       <div className='flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden print:p-0 print:overflow-visible print:block print:block print:overflow-visible'>
         <section className='w-full lg:w-[400px] flex flex-col gap-5 lg:overflow-y-auto pr-0 lg:pr-2 print:hidden shrink-0'>
           <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
-            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>1. Raw Input (Quick Paste)</h2>
-            <textarea 
-              className='w-full h-32 p-3 text-sm border border-gray-300 rounded-md focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent resize-none outline-none' 
-              placeholder='3 bags of MOP at 15,000 each&#10;5 force up at 7500 each&#10;7 sprayer at 32,000 each'
-              value={rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
-            />
-            <p className='text-[10px] text-gray-400 mt-2 italic'>* Items are parsed dynamically into the preview.</p>
-          </div>
-
-          <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
-            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>2. Add Items</h2>
+            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>1. Add Items</h2>
             <div className='grid grid-cols-12 gap-2 mb-3'>
               <div className='col-span-12 relative'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Select from Price List (Optional)</label>
@@ -343,7 +332,7 @@ export default function InvoiceGenerator() {
               </div>
               <div className='col-span-4'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Qty</label>
-                <input type='number' min="1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(parseInt(e.target.value) || 1)} />
+                <input type='number' min="0" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(parseInt(e.target.value) || 0)} />
               </div>
               <div className='col-span-8'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Unit Price</label>
@@ -356,7 +345,7 @@ export default function InvoiceGenerator() {
                 const price = parseFloat(manualPrice) || 0;
                 setManualItems([...manualItems, { id: `m-${Date.now()}`, qty: manualQty, description: manualDesc, price: price, total: manualQty * price, isManual: true }]);
                 setManualDesc('');
-                setManualQty(1);
+                setManualQty(0);
                 setManualPrice('');
               }}
               disabled={!manualDesc}
@@ -367,7 +356,7 @@ export default function InvoiceGenerator() {
           </div>
           
           <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
-            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>3. Invoice Details</h2>
+            <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>2. Invoice Details</h2>
             <div className='grid grid-cols-2 gap-4'>
               <div className='col-span-2'>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Select Client</label>
@@ -572,7 +561,7 @@ export default function InvoiceGenerator() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-gray-400 italic">No items added. Paste items in the raw input to see them here.</td>
+                    <td colSpan={5} className="py-8 text-center text-gray-400 italic">No items added. Add items using the form to see them here.</td>
                   </tr>
                 )}
               </tbody>
@@ -765,7 +754,7 @@ export default function InvoiceGenerator() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-gray-400 italic">No items added. Paste items in the raw input to see them here.</td>
+                    <td colSpan={5} className="py-8 text-center text-gray-400 italic">No items added. Add items using the form to see them here.</td>
                   </tr>
                 )}
               </tbody>
