@@ -17,7 +17,9 @@ export default function PriceList() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [wholesalePrice, setWholesalePrice] = useState('');
+  const [wholesalePriceBronze, setWholesalePriceBronze] = useState('');
+  const [wholesalePriceSilver, setWholesalePriceSilver] = useState('');
+  const [wholesalePriceGold, setWholesalePriceGold] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('name');
@@ -50,11 +52,12 @@ export default function PriceList() {
         updatedAt: new Date().toISOString(),
         createdBy: user?.username
       };
-      if (wholesalePrice !== '') {
-        itemData.wholesalePrice = Number(wholesalePrice);
-      } else {
-        itemData.wholesalePrice = null; // Clear it if emptied
-      }
+      if (wholesalePriceBronze !== '') itemData.wholesalePriceBronze = Number(wholesalePriceBronze);
+      else itemData.wholesalePriceBronze = null;
+      if (wholesalePriceSilver !== '') itemData.wholesalePriceSilver = Number(wholesalePriceSilver);
+      else itemData.wholesalePriceSilver = null;
+      if (wholesalePriceGold !== '') itemData.wholesalePriceGold = Number(wholesalePriceGold);
+      else itemData.wholesalePriceGold = null;
       await setDoc(doc(db, 'products', id), itemData, { merge: true });
       
       toast.success(editId ? 'Item updated successfully' : 'Item added successfully');
@@ -80,7 +83,9 @@ export default function PriceList() {
     setName(item.name);
     setDescription(item.description || '');
     setPrice(item.price.toString());
-    setWholesalePrice(item.wholesalePrice?.toString() || '');
+    setWholesalePriceBronze(item.wholesalePriceBronze?.toString() || item.wholesalePrice?.toString() || '');
+    setWholesalePriceSilver(item.wholesalePriceSilver?.toString() || item.wholesalePrice?.toString() || '');
+    setWholesalePriceGold(item.wholesalePriceGold?.toString() || item.wholesalePrice?.toString() || '');
     setIsEditing(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -90,7 +95,9 @@ export default function PriceList() {
     setName('');
     setDescription('');
     setPrice('');
-    setWholesalePrice('');
+    setWholesalePriceBronze('');
+    setWholesalePriceSilver('');
+    setWholesalePriceGold('');
     setIsEditing(false);
   };
 
@@ -140,7 +147,9 @@ export default function PriceList() {
     const dataToExport = filteredAndSortedItems.map(item => ({
       'Service/Product Name': item.name,
       'Description': item.description,
-      'Wholesale Price': item.wholesalePrice || '',
+      'Wholesale Price (B)': item.wholesalePriceBronze || item.wholesalePrice || '',
+      'Wholesale Price (S)': item.wholesalePriceSilver || item.wholesalePrice || '',
+      'Wholesale Price (G)': item.wholesalePriceGold || item.wholesalePrice || '',
       'Unit Price': item.price,
       'Added By': item.createdBy
     }));
@@ -187,8 +196,16 @@ export default function PriceList() {
                 <textarea rows={2} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={description} onChange={e => setDescription(e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Wholesale Price (₦) - Optional</label>
-                <input type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={wholesalePrice} onChange={e => setWholesalePrice(e.target.value)} />
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Wholesale Bronze (₦)</label>
+                <input type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={wholesalePriceBronze} onChange={e => setWholesalePriceBronze(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Wholesale Silver (₦)</label>
+                <input type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={wholesalePriceSilver} onChange={e => setWholesalePriceSilver(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Wholesale Gold (₦)</label>
+                <input type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={wholesalePriceGold} onChange={e => setWholesalePriceGold(e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Unit Price (₦)</label>
@@ -216,9 +233,9 @@ export default function PriceList() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
                     <div className="flex items-center gap-1">Item Details <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
-                  <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('wholesalePrice')}>
-                    <div className="flex items-center gap-1">Wholesale <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
-                  </th>
+                  {isAdmin && <th className="px-6 py-4 font-bold text-gray-600">
+                    <div className="flex items-center gap-1">Wholesale (B/S/G)</div>
+                  </th>}
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('price')}>
                     <div className="flex items-center gap-1">Unit Price <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
@@ -249,9 +266,11 @@ export default function PriceList() {
                         <p className="font-semibold text-gray-900">{item.name}</p>
                         {item.description && <p className="text-gray-500 text-xs mt-1 max-w-sm">{item.description}</p>}
                       </td>
-                      <td className="px-6 py-4 font-mono font-medium text-gray-500">
-                        {item.wholesalePrice ? `₦${Number(item.wholesalePrice).toLocaleString()}` : '-'}
-                      </td>
+                      {isAdmin && <td className="px-6 py-4 font-mono font-medium text-gray-500 text-xs whitespace-nowrap">
+                        {item.wholesalePriceBronze || item.wholesalePrice ? `₦${Number(item.wholesalePriceBronze || item.wholesalePrice).toLocaleString()}` : '-'} / <br/>
+                        {item.wholesalePriceSilver || item.wholesalePrice ? `₦${Number(item.wholesalePriceSilver || item.wholesalePrice).toLocaleString()}` : '-'} / <br/>
+                        {item.wholesalePriceGold || item.wholesalePrice ? `₦${Number(item.wholesalePriceGold || item.wholesalePrice).toLocaleString()}` : '-'}
+                      </td>}
                       <td className="px-6 py-4 font-mono font-bold text-[#0F5132]">
                         ₦{Number(item.price).toLocaleString()}
                       </td>

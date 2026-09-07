@@ -212,7 +212,13 @@ export default function InvoiceGenerator() {
     try {
       const itemsWithWholesale = allItems.map(item => {
          const matchedProduct = products.find(p => (p.name || '').toLowerCase() === (item.description || '').toLowerCase());
-         const wp = matchedProduct?.wholesalePrice || 0;
+         let wp = 0;
+         if (matchedProduct) {
+           const tier = user?.pricingTier || 'bronze';
+           if (tier === 'gold') wp = matchedProduct.wholesalePriceGold || matchedProduct.wholesalePrice || 0;
+           else if (tier === 'silver') wp = matchedProduct.wholesalePriceSilver || matchedProduct.wholesalePrice || 0;
+           else wp = matchedProduct.wholesalePriceBronze || matchedProduct.wholesalePrice || 0;
+         }
          return { ...item, wholesalePrice: wp, wholesaleTotal: wp * item.qty, profit: (item.price - wp) * item.qty };
       });
       const wholesaleTotal = itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
@@ -314,7 +320,15 @@ export default function InvoiceGenerator() {
                         }}
                       >
                         <div className="font-medium text-gray-800">{p.name}</div>
-                        <div className="text-xs text-gray-500">Unit: {sym}{Number(p.price).toLocaleString()} {p.wholesalePrice ? `| Wholesale: ${sym}${Number(p.wholesalePrice).toLocaleString()}` : ''}</div>
+                        <div className="text-xs text-gray-500">Unit: {sym}{Number(p.price).toLocaleString()} 
+{(() => {
+  const tier = user?.pricingTier || 'bronze';
+  const wp = tier === 'gold' ? (p.wholesalePriceGold || p.wholesalePrice) :
+             tier === 'silver' ? (p.wholesalePriceSilver || p.wholesalePrice) :
+             (p.wholesalePriceBronze || p.wholesalePrice);
+  return wp ? `| Wholesale: ${sym}${Number(wp).toLocaleString()}` : '';
+})()}
+</div>
                       </div>
                     )})}
                     {products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (

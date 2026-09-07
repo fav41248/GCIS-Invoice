@@ -7,6 +7,7 @@ export interface CustomUser {
   name: string;
   role: 'admin' | 'sales';
   phone?: string;
+  pricingTier?: 'bronze' | 'silver' | 'gold';
 }
 
 interface AuthContextType {

@@ -7,12 +7,13 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
 export default function KnowledgeBank() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'bronze' | 'silver' | 'gold'>('bronze');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', price: 0, wholesalePrice: 0, category: '', description: '' });
+  const [editForm, setEditForm] = useState({ name: '', price: 0, wholesalePriceBronze: 0, wholesalePriceSilver: 0, wholesalePriceGold: 0, category: '', description: '' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const [isUploading, setIsUploading] = useState(false);
@@ -49,7 +50,7 @@ export default function KnowledgeBank() {
           header: true,
           skipEmptyLines: true,
           complete: async (results) => {
-            await processData(results.data);
+            await processData(results.data, activeTab);
           }
         });
       } else if (fileExt === 'xlsx' || fileExt === 'xls') {
@@ -60,7 +61,7 @@ export default function KnowledgeBank() {
           const wsname = wb.SheetNames[0];
           const ws = wb.Sheets[wsname];
           const data = XLSX.utils.sheet_to_json(ws);
-          await processData(data);
+          await processData(data, activeTab);
         };
         reader.readAsBinaryString(file);
       } else {
@@ -75,7 +76,7 @@ export default function KnowledgeBank() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const processData = async (data: any[]) => {
+  const processData = async (data: any[], currentTab: string) => {
     if (!data || data.length === 0) {
       setUploadStatus({ type: 'error', message: 'The file is empty.' });
       setIsUploading(false);
@@ -133,7 +134,9 @@ export default function KnowledgeBank() {
                 updatedAt: new Date().toISOString()
               };
               if (wholesalePrice !== undefined) {
-                productData.wholesalePrice = wholesalePrice;
+                if (currentTab === 'gold') productData.wholesalePriceGold = wholesalePrice;
+                else if (currentTab === 'silver') productData.wholesalePriceSilver = wholesalePrice;
+                else productData.wholesalePriceBronze = wholesalePrice;
               }
               
               const category = row['Category'] || row['category'];
@@ -177,7 +180,7 @@ export default function KnowledgeBank() {
 
   const handleEditClick = (product: any) => {
     setEditingId(product.id);
-    setEditForm({ name: product.name, price: product.price, wholesalePrice: product.wholesalePrice || 0, category: product.category || 'General', description: product.description || '' });
+    setEditForm({ name: product.name, price: product.price, wholesalePriceBronze: product.wholesalePriceBronze || product.wholesalePrice || 0, wholesalePriceSilver: product.wholesalePriceSilver || product.wholesalePrice || 0, wholesalePriceGold: product.wholesalePriceGold || product.wholesalePrice || 0, category: product.category || 'General', description: product.description || '' });
   };
 
   const handleSaveEdit = async () => {
@@ -186,7 +189,9 @@ export default function KnowledgeBank() {
       await setDoc(doc(db, 'products', editingId), {
         name: editForm.name,
         price: editForm.price,
-        wholesalePrice: editForm.wholesalePrice,
+        wholesalePriceBronze: editForm.wholesalePriceBronze,
+        wholesalePriceSilver: editForm.wholesalePriceSilver,
+        wholesalePriceGold: editForm.wholesalePriceGold,
         category: editForm.category,
         description: editForm.description,
         updatedAt: new Date().toISOString()
@@ -285,6 +290,27 @@ export default function KnowledgeBank() {
           </div>
         )}
 
+        <div className="flex items-center gap-2 mb-4 border-b border-gray-200">
+          <button 
+            onClick={() => setActiveTab('bronze')} 
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'bronze' ? 'border-b-2 border-[#0F5132] text-[#0F5132]' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Bronze Plan
+          </button>
+          <button 
+            onClick={() => setActiveTab('silver')} 
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'silver' ? 'border-b-2 border-gray-400 text-gray-700' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Silver Plan
+          </button>
+          <button 
+            onClick={() => setActiveTab('gold')} 
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'gold' ? 'border-b-2 border-yellow-500 text-yellow-700' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Gold Plan
+          </button>
+        </div>
+        
         <div className="flex justify-between items-center max-w-2xl">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -385,13 +411,29 @@ export default function KnowledgeBank() {
                           />
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <input 
-                            type="number" 
-                            className="w-full border border-gray-300 rounded p-1 text-sm text-right outline-none focus:border-[#0F5132]"
-                            value={editForm.wholesalePrice}
-                            onChange={(e) => setEditForm({...editForm, wholesalePrice: parseFloat(e.target.value) || 0})}
-                            placeholder="Wholesale"
-                          />
+                          <div className="flex flex-col gap-1">
+                            <input 
+                              type="number" 
+                              className="w-full border border-gray-300 rounded p-1 text-xs text-right outline-none focus:border-[#0F5132]"
+                              value={editForm.wholesalePriceBronze}
+                              onChange={(e) => setEditForm({...editForm, wholesalePriceBronze: parseFloat(e.target.value) || 0})}
+                              placeholder="Bronze"
+                            />
+                            <input 
+                              type="number" 
+                              className="w-full border border-gray-300 rounded p-1 text-xs text-right outline-none focus:border-[#0F5132]"
+                              value={editForm.wholesalePriceSilver}
+                              onChange={(e) => setEditForm({...editForm, wholesalePriceSilver: parseFloat(e.target.value) || 0})}
+                              placeholder="Silver"
+                            />
+                            <input 
+                              type="number" 
+                              className="w-full border border-gray-300 rounded p-1 text-xs text-right outline-none focus:border-[#0F5132]"
+                              value={editForm.wholesalePriceGold}
+                              onChange={(e) => setEditForm({...editForm, wholesalePriceGold: parseFloat(e.target.value) || 0})}
+                              placeholder="Gold"
+                            />
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <input 
@@ -425,7 +467,14 @@ export default function KnowledgeBank() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <span className="font-semibold text-gray-600">
-                            {product.wholesalePrice ? `₦${product.wholesalePrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '-'}
+                            {
+  (() => {
+    const wp = activeTab === 'gold' ? (product.wholesalePriceGold || product.wholesalePrice || 0) :
+               activeTab === 'silver' ? (product.wholesalePriceSilver || product.wholesalePrice || 0) :
+               (product.wholesalePriceBronze || product.wholesalePrice || 0);
+    return wp ? `₦${wp.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '-';
+  })()
+}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
