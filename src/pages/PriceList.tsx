@@ -144,15 +144,28 @@ export default function PriceList() {
   const currentItems = filteredAndSortedItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleExport = () => {
-    const dataToExport = filteredAndSortedItems.map(item => ({
-      'Service/Product Name': item.name,
-      'Description': item.description,
-      'Wholesale Price (B)': item.wholesalePriceBronze || item.wholesalePrice || '',
-      'Wholesale Price (S)': item.wholesalePriceSilver || item.wholesalePrice || '',
-      'Wholesale Price (G)': item.wholesalePriceGold || item.wholesalePrice || '',
-      'Unit Price': item.price,
-      'Added By': item.createdBy
-    }));
+    const dataToExport = filteredAndSortedItems.map(item => {
+      const exportData: any = {
+        'Service/Product Name': item.name,
+        'Description': item.description,
+      };
+
+      if (isAdmin) {
+        exportData['Wholesale Price (B)'] = item.wholesalePriceBronze || item.wholesalePrice || '';
+        exportData['Wholesale Price (S)'] = item.wholesalePriceSilver || item.wholesalePrice || '';
+        exportData['Wholesale Price (G)'] = item.wholesalePriceGold || item.wholesalePrice || '';
+        exportData['Unit Price'] = item.price;
+        exportData['Added By'] = item.createdBy;
+      } else {
+        exportData['Wholesale Price'] = user?.pricingTier === 'gold' && (item.wholesalePriceGold || item.wholesalePrice) ? item.wholesalePriceGold || item.wholesalePrice : 
+                                        user?.pricingTier === 'silver' && (item.wholesalePriceSilver || item.wholesalePrice) ? item.wholesalePriceSilver || item.wholesalePrice : 
+                                        item.wholesalePriceBronze || item.wholesalePrice || '';
+        exportData['Unit Price'] = item.price;
+      }
+
+      return exportData;
+    });
+    
     exportToCSV(dataToExport, 'products.csv');
     toast.success('Price list exported');
   };
@@ -233,9 +246,15 @@ export default function PriceList() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
                     <div className="flex items-center gap-1">Item Details <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
-                  {isAdmin && <th className="px-6 py-4 font-bold text-gray-600">
-                    <div className="flex items-center gap-1">Wholesale (B/S/G)</div>
-                  </th>}
+                  {isAdmin ? (
+                    <th className="px-6 py-4 font-bold text-gray-600">
+                      <div className="flex items-center gap-1">Wholesale (B/S/G)</div>
+                    </th>
+                  ) : (
+                    <th className="px-6 py-4 font-bold text-gray-600">
+                      <div className="flex items-center gap-1">Wholesale Price</div>
+                    </th>
+                  )}
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('price')}>
                     <div className="flex items-center gap-1">Unit Price <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
@@ -266,11 +285,19 @@ export default function PriceList() {
                         <p className="font-semibold text-gray-900">{item.name}</p>
                         {item.description && <p className="text-gray-500 text-xs mt-1 max-w-sm">{item.description}</p>}
                       </td>
-                      {isAdmin && <td className="px-6 py-4 font-mono font-medium text-gray-500 text-xs whitespace-nowrap">
-                        {item.wholesalePriceBronze || item.wholesalePrice ? `₦${Number(item.wholesalePriceBronze || item.wholesalePrice).toLocaleString()}` : '-'} / <br/>
-                        {item.wholesalePriceSilver || item.wholesalePrice ? `₦${Number(item.wholesalePriceSilver || item.wholesalePrice).toLocaleString()}` : '-'} / <br/>
-                        {item.wholesalePriceGold || item.wholesalePrice ? `₦${Number(item.wholesalePriceGold || item.wholesalePrice).toLocaleString()}` : '-'}
-                      </td>}
+                      {isAdmin ? (
+                        <td className="px-6 py-4 font-mono font-medium text-gray-500 text-xs whitespace-nowrap">
+                          {item.wholesalePriceBronze || item.wholesalePrice ? `₦${Number(item.wholesalePriceBronze || item.wholesalePrice).toLocaleString()}` : '-'} / <br/>
+                          {item.wholesalePriceSilver || item.wholesalePrice ? `₦${Number(item.wholesalePriceSilver || item.wholesalePrice).toLocaleString()}` : '-'} / <br/>
+                          {item.wholesalePriceGold || item.wholesalePrice ? `₦${Number(item.wholesalePriceGold || item.wholesalePrice).toLocaleString()}` : '-'}
+                        </td>
+                      ) : (
+                        <td className="px-6 py-4 font-mono font-medium text-gray-500">
+                          {user?.pricingTier === 'gold' && (item.wholesalePriceGold || item.wholesalePrice) ? `₦${Number(item.wholesalePriceGold || item.wholesalePrice).toLocaleString()}` : 
+                           user?.pricingTier === 'silver' && (item.wholesalePriceSilver || item.wholesalePrice) ? `₦${Number(item.wholesalePriceSilver || item.wholesalePrice).toLocaleString()}` : 
+                           (item.wholesalePriceBronze || item.wholesalePrice) ? `₦${Number(item.wholesalePriceBronze || item.wholesalePrice).toLocaleString()}` : '-'}
+                        </td>
+                      )}
                       <td className="px-6 py-4 font-mono font-bold text-[#0F5132]">
                         ₦{Number(item.price).toLocaleString()}
                       </td>

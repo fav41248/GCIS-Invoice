@@ -53,7 +53,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (userDoc.exists()) {
       const data = userDoc.data();
       if (data.pin === pin) {
-        const userData: CustomUser = { username: normalized, role: data.role, name: data.name };
+        const userData: CustomUser = { 
+          username: normalized, 
+          role: data.role, 
+          name: data.name,
+          phone: data.phone,
+          pricingTier: data.pricingTier
+        };
         setUser(userData);
         localStorage.setItem('gcis_user', JSON.stringify(userData));
       } else {

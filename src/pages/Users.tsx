@@ -31,7 +31,7 @@ export default function Users() {
 
   const startEdit = (user: any) => {
     setEditingId(user.id);
-    setEditData({ name: user.name, username: user.username, pin: user.pin || '' });
+    setEditData({ name: user.name, username: user.username, pin: user.pin || '', phone: user.phone || '', pricingTier: user.pricingTier || 'bronze' });
   };
 
   const cancelEdit = () => {
@@ -161,6 +161,18 @@ export default function Users() {
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PIN / Password *</label>
               <input required type="text" minLength={4} placeholder="1234" className="w-full border rounded p-2 text-sm" value={pin} onChange={e => setPin(e.target.value)} />
             </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
+              <input type="text" placeholder="08012345678" className="w-full border rounded p-2 text-sm" value={phone} onChange={e => setPhone(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pricing Tier</label>
+              <select className="w-full border rounded p-2 text-sm bg-white" value={pricingTier} onChange={e => setPricingTier(e.target.value)}>
+                <option value="bronze">Bronze</option>
+                <option value="silver">Silver</option>
+                <option value="gold">Gold</option>
+              </select>
+            </div>
             <div className="col-span-2 flex justify-end mt-2">
               <button disabled={isCreating} type="submit" className="bg-[#0F5132] text-white px-6 py-2 rounded font-medium mt-2">
                 {isCreating ? 'Creating...' : 'Create Rep'}
@@ -229,6 +241,12 @@ export default function Users() {
                         </button>
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-gray-500">{u.phone || '-'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${u.pricingTier === 'gold' ? 'bg-yellow-100 text-yellow-800' : u.pricingTier === 'silver' ? 'bg-gray-200 text-gray-800' : 'bg-orange-100 text-orange-800'}`}>
+                        {u.pricingTier || 'bronze'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4">
                        <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-50 text-blue-700'}`}>{u.role}</span>
                     </td>
@@ -247,7 +265,7 @@ export default function Users() {
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No sales reps created yet.</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No sales reps created yet.</td></tr>
             )}
           </tbody>
         </table>

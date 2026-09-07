@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
@@ -27,7 +27,11 @@ export default function Clients() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'clients'), orderBy('name', 'asc'));
+    const clientsRef = collection(db, 'clients');
+    const q = isAdmin 
+      ? query(clientsRef) 
+      : query(clientsRef, where('createdBy', '==', user.username));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClients(data);
@@ -37,20 +41,25 @@ export default function Clients() {
       setLoading(false);
     });
     return unsubscribe;
-  }, [user]);
+  }, [user, isAdmin]);
 
   const saveClient = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const id = editId || `client_${Date.now()}`;
-      await setDoc(doc(db, 'clients', id), {
+      const payload: any = {
         name,
         email,
         phone,
         address,
-        updatedAt: new Date().toISOString(),
-        createdBy: user?.username
-      }, { merge: true });
+        updatedAt: new Date().toISOString()
+      };
+      
+      if (!editId) {
+        payload.createdBy = user?.username;
+      }
+
+      await setDoc(doc(db, 'clients', id), payload, { merge: true });
       
       toast.success(editId ? 'Client updated successfully' : 'Client added successfully');
       resetForm();
@@ -125,13 +134,21 @@ export default function Clients() {
   const currentClients = filteredAndSortedClients.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleExport = () => {
-    const dataToExport = filteredAndSortedClients.map(c => ({
-      'Name': c.name,
-      'Email': c.email,
-      'Phone': c.phone,
-      'Address': c.address,
-      'Added By': c.createdBy
-    }));
+    const dataToExport = filteredAndSortedClients.map(c => {
+      const exportData: any = {
+        'Name': c.name,
+        'Email': c.email,
+        'Phone': c.phone,
+        'Address': c.address,
+      };
+      
+      if (isAdmin) {
+        exportData['Added By'] = c.createdBy;
+      }
+      
+      return exportData;
+    });
+    
     exportToCSV(dataToExport, 'clients.csv');
     toast.success('Clients exported successfully');
   };
@@ -208,6 +225,11 @@ export default function Clients() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('phone')}>
                     <div className="flex items-center gap-1">Contact <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
+                  {isAdmin && (
+                    <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('createdBy')}>
+                      <div className="flex items-center gap-1">Added By <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                    </th>
+                  )}
                   <th className="px-6 py-4 font-bold text-gray-600 text-right">Actions</th>
                 </tr>
               </thead>
@@ -223,6 +245,11 @@ export default function Clients() {
                         <div className="h-4 bg-gray-200 rounded w-24 animate-pulse mb-2"></div>
                         <div className="h-4 bg-gray-100 rounded w-32 animate-pulse"></div>
                       </td>
+                      {isAdmin && (
+                        <td className="px-6 py-4">
+                          <div className="h-4 bg-gray-200 rounded w-20 animate-pulse"></div>
+                        </td>
+                      )}
                       <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div></td>
                     </tr>
                   ))
@@ -237,6 +264,13 @@ export default function Clients() {
                         <p className="text-gray-900">{c.phone}</p>
                         <p className="text-gray-500">{c.email}</p>
                       </td>
+                      {isAdmin && (
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                            {c.createdBy || '-'}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
                           <button 
