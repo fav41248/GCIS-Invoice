@@ -30,8 +30,12 @@ export default function PriceList() {
   const itemsPerPage = 25;
 
   const categories = useMemo(() => {
-    const cats = items.map(item => item.category).filter(Boolean);
-    return [...new Set(cats)].sort() as string[];
+    const cats = items
+      .map(item => (typeof item.category === 'string' ? item.category.trim() : ''))
+      .filter(Boolean);
+    const unique = [...new Set(cats)].sort((a, b) => a.localeCompare(b));
+    if (unique.length > 0) return unique;
+    return ['Batteries', 'Charge Controllers', 'Inverters', 'Mounting & Accessories', 'Solar Panels', 'General'];
   }, [items]);
 
   useEffect(() => {
@@ -50,12 +54,17 @@ export default function PriceList() {
 
   const saveItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    const finalCategory = category.trim();
+    if (!finalCategory) {
+      toast.error('Please select or enter a category');
+      return;
+    }
     try {
       const id = editId || `item_${Date.now()}`;
       const itemData: any = {
         name,
         description,
-        category,
+        category: finalCategory,
         price: Number(price),
         updatedAt: new Date().toISOString(),
         createdBy: user?.username
@@ -90,7 +99,8 @@ export default function PriceList() {
     setEditId(item.id);
     setName(item.name);
     setDescription(item.description || '');
-    setCategory(item.category || '');
+    const itemCat = (item.category || '').trim();
+    setCategory(itemCat);
     setPrice(item.price.toString());
     setWholesalePriceBronze(item.wholesalePriceBronze?.toString() || item.wholesalePrice?.toString() || '');
     setWholesalePriceSilver(item.wholesalePriceSilver?.toString() || item.wholesalePrice?.toString() || '');
@@ -231,7 +241,19 @@ export default function PriceList() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Category</label>
-                <input type="text" placeholder="e.g. Inverter, Solar Panel" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none" value={category} onChange={e => setCategory(e.target.value)} />
+                <select
+                  required
+                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-[#198754] outline-none bg-white cursor-pointer"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
+                  <option value="">-- Select Category --</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Description (Optional)</label>

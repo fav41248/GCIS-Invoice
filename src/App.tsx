@@ -14,7 +14,6 @@ import CompanySettings from './pages/Settings';
 import ReceiptView from './pages/ReceiptView';
 import InvoiceView from './pages/InvoiceView';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { PWAInstallButton } from './components/PWAInstallButton';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, logout } = useAuth();
@@ -100,10 +99,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
         <div className="p-4 border-t border-[#198754]">
           <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{user?.username?.charAt(0).toUpperCase()}</div>
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
+              {(user?.username?.[0] || user?.name?.[0] || 'U').toUpperCase()}
+            </div>
             <div className="flex-1 min-w-0">
-               <p className="text-sm font-medium truncate">{user?.name}</p>
-               <p className="text-xs text-[#D1E7DD]">@{user?.username}</p>
+               <p className="text-sm font-medium truncate">{user?.name || user?.username || 'User'}</p>
+               <p className="text-xs text-[#D1E7DD]">@{user?.username || 'user'}</p>
             </div>
           </div>
           <button onClick={logout} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-[#D1E7DD] hover:text-white hover:bg-[#198754]/50 rounded-lg transition-colors">
@@ -140,7 +141,16 @@ export default function App() {
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-[#F8F9FA]">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FA]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-9 h-9 border-4 border-[#198754] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold text-gray-700">Loading Portal...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

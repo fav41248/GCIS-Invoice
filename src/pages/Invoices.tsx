@@ -246,8 +246,8 @@ export default function Invoices() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col gap-2 items-start">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                        {inv.status.toUpperCase()}
+                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${(inv.status || 'unpaid') === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                        {(inv.status || 'unpaid').toUpperCase()}
                       </span>
                       {isOverdue(inv) && (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">

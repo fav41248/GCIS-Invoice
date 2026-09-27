@@ -27,24 +27,30 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<CustomUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const stored = localStorage.getItem('gcis_user');
-        if (stored) {
-          setUser(JSON.parse(stored));
+  const [user, setUser] = useState<CustomUser | null>(() => {
+    try {
+      if (typeof window === 'undefined') return null;
+      const stored = localStorage.getItem('gcis_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object' && typeof parsed.username === 'string' && parsed.username.trim().length > 0) {
+          return {
+            username: parsed.username.toLowerCase().trim(),
+            name: parsed.name || parsed.username,
+            role: parsed.role === 'admin' ? 'admin' : 'sales',
+            phone: parsed.phone || '',
+            pricingTier: parsed.pricingTier || 'bronze'
+          };
         }
-      } catch (e) {
-        console.error("Auth init error:", e);
-      } finally {
-        setLoading(false);
+        localStorage.removeItem('gcis_user');
       }
-    };
-    initAuth();
-  }, []);
+    } catch (e) {
+      console.error("Auth init error:", e);
+      try { localStorage.removeItem('gcis_user'); } catch {}
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(false);
 
   const login = async (username: string, pin: string) => {    
     const normalized = username.toLowerCase().trim();
@@ -55,10 +61,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.pin === pin) {
         const userData: CustomUser = { 
           username: normalized, 
-          role: data.role, 
-          name: data.name,
-          phone: data.phone,
-          pricingTier: data.pricingTier
+          role: data.role === 'admin' ? 'admin' : 'sales', 
+          name: data.name || normalized,
+          phone: data.phone || '',
+          pricingTier: data.pricingTier || 'bronze'
         };
         setUser(userData);
         localStorage.setItem('gcis_user', JSON.stringify(userData));
@@ -80,14 +86,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('gcis_user');
+    try {
+      localStorage.removeItem('gcis_user');
+    } catch {}
   };
 
   const isAdmin = user?.role === 'admin';
 
   return (
     <AuthContext.Provider value={{ user, loading, isAdmin, login, logout }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

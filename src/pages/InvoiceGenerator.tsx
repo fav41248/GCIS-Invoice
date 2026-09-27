@@ -8,7 +8,6 @@ import { OperationType, handleFirestoreError } from '../lib/db';
 import { useNavigate } from 'react-router-dom';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
-import html2pdf from 'html2pdf.js';
 
 export default function InvoiceGenerator() {
   const navigate = useNavigate();
