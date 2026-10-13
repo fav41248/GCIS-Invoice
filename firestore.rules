@@ -17,9 +17,8 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if true;
-      allow create, update: if hasAllKeys(['username', 'role', 'name', 'pin', 'createdAt']) &&
-                   request.resource.data.role in ['admin', 'sales'] &&
-                   request.resource.data.username is string &&
+      allow create, update: if request.resource.data.username is string &&
+                   request.resource.data.name is string &&
                    request.resource.data.pin is string;
       allow delete: if true;
     }
@@ -40,8 +39,7 @@ service cloud.firestore {
     
     match /clients/{clientId} {
       allow read: if true;
-      allow create, update: if request.resource.data.name is string &&
-                   request.resource.data.email is string;
+      allow create, update: if request.resource.data.name is string;
       allow delete: if true;
     }
     
@@ -54,8 +52,7 @@ service cloud.firestore {
     
     match /knowledge/{docId} {
       allow read: if true;
-      allow create, update: if request.resource.data.title is string &&
-                   request.resource.data.content is string;
+      allow create, update: if true;
       allow delete: if true;
     }
     

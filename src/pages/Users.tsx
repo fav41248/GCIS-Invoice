@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, deleteDoc, getDocs, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
@@ -41,10 +41,20 @@ export default function Users() {
   const saveEdit = async (id: string, user: any) => {
     try {
       const normalizedUsername = editData.username.toLowerCase().trim();
+      if (!normalizedUsername) {
+        toast.error('Username cannot be empty');
+        return;
+      }
       
       if (normalizedUsername !== id) {
+        const existingSnap = await getDoc(doc(db, 'users', normalizedUsername));
+        if (existingSnap.exists()) {
+          toast.error('A user with that username already exists.');
+          return;
+        }
+        const { id: _oldId, ...userDataToKeep } = user;
         await setDoc(doc(db, 'users', normalizedUsername), {
-          ...user,
+          ...userDataToKeep,
           name: editData.name,
           username: normalizedUsername,
           pin: editData.pin,
@@ -61,9 +71,10 @@ export default function Users() {
           pricingTier: editData.pricingTier
         });
       }
+      toast.success('User updated successfully');
       setEditingId(null);
     } catch (err: any) {
-      alert('Failed to update user: ' + err.message);
+      toast.error('Failed to update user: ' + (err.message || 'Error'));
     }
   };
 
@@ -109,6 +120,18 @@ export default function Users() {
 
     try {
       const normalizedUsername = username.toLowerCase().trim();
+      if (!normalizedUsername) {
+        setError('Please provide a valid username.');
+        setIsCreating(false);
+        return;
+      }
+
+      const existingSnap = await getDoc(doc(db, 'users', normalizedUsername));
+      if (existingSnap.exists()) {
+        setError('A user with this username already exists.');
+        setIsCreating(false);
+        return;
+      }
       
       await setDoc(doc(db, 'users', normalizedUsername), {
         name, 
@@ -120,6 +143,7 @@ export default function Users() {
         createdAt: new Date().toISOString()
       });
       
+      toast.success('Sales rep added successfully');
       setShowAdd(false);
       setName(''); setUsername(''); setPin(''); setPhone(''); setPricingTier('bronze');
     } catch (err: any) {

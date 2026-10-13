@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from '
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
-import { Trash2, Edit2, Search, Download, Tag, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Edit2, Search, Download, Tag, ArrowUpDown, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportToCSV } from '../lib/utils';
 
@@ -17,12 +17,14 @@ export default function PriceList() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [available, setAvailable] = useState<boolean>(true);
   const [price, setPrice] = useState('');
   const [wholesalePriceBronze, setWholesalePriceBronze] = useState('');
   const [wholesalePriceSilver, setWholesalePriceSilver] = useState('');
   const [wholesalePriceGold, setWholesalePriceGold] = useState('');
 
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'unavailable'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -66,6 +68,7 @@ export default function PriceList() {
         description,
         category: finalCategory,
         price: Number(price),
+        available: available,
         updatedAt: new Date().toISOString(),
         createdBy: user?.username
       };
@@ -81,6 +84,18 @@ export default function PriceList() {
       resetForm();
     } catch (error) {
       if (!handleFirestoreError(error, OperationType.CREATE, 'products')) toast.error('Failed to save item');
+    }
+  };
+
+  const handleToggleAvailability = async (id: string, newAvailable: boolean) => {
+    try {
+      await setDoc(doc(db, 'products', id), {
+        available: newAvailable,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      toast.success(newAvailable ? 'Marked as Available' : 'Marked as Out of Stock');
+    } catch (error) {
+      if (!handleFirestoreError(error, OperationType.UPDATE, `products/${id}`)) toast.error('Failed to update availability');
     }
   };
 
@@ -101,6 +116,7 @@ export default function PriceList() {
     setDescription(item.description || '');
     const itemCat = (item.category || '').trim();
     setCategory(itemCat);
+    setAvailable(item.available !== false);
     setPrice(item.price.toString());
     setWholesalePriceBronze(item.wholesalePriceBronze?.toString() || item.wholesalePrice?.toString() || '');
     setWholesalePriceSilver(item.wholesalePriceSilver?.toString() || item.wholesalePrice?.toString() || '');
@@ -114,6 +130,7 @@ export default function PriceList() {
     setName('');
     setDescription('');
     setCategory('');
+    setAvailable(true);
     setPrice('');
     setWholesalePriceBronze('');
     setWholesalePriceSilver('');
@@ -135,6 +152,12 @@ export default function PriceList() {
     if (selectedCategory) {
       result = result.filter(item => item.category === selectedCategory);
     }
+
+    if (statusFilter === 'available') {
+      result = result.filter(item => item.available !== false);
+    } else if (statusFilter === 'unavailable') {
+      result = result.filter(item => item.available === false);
+    }
     
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
@@ -151,6 +174,9 @@ export default function PriceList() {
       if (sortField === 'price') {
         aVal = Number(aVal) || 0;
         bVal = Number(bVal) || 0;
+      } else if (sortField === 'available') {
+        aVal = a.available !== false ? 1 : 0;
+        bVal = b.available !== false ? 1 : 0;
       } else {
         aVal = String(aVal || '').toLowerCase();
         bVal = String(bVal || '').toLowerCase();
@@ -162,7 +188,7 @@ export default function PriceList() {
     });
     
     return result;
-  }, [items, searchTerm, selectedCategory, sortField, sortOrder]);
+  }, [items, searchTerm, selectedCategory, statusFilter, sortField, sortOrder]);
 
   const totalPages = Math.ceil(filteredAndSortedItems.length / itemsPerPage);
   const currentItems = filteredAndSortedItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -173,6 +199,7 @@ export default function PriceList() {
         'Service/Product Name': item.name,
         'Category': item.category || '',
         'Description': item.description,
+        'Stock Status': item.available !== false ? 'Available' : 'Out of Stock',
       };
 
       if (isAdmin) {
@@ -200,6 +227,15 @@ export default function PriceList() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold">Price List</h1>
         <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+          <select
+            className="w-full md:w-36 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#198754] outline-none"
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value as any); setCurrentPage(1); }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="available">In Stock Only</option>
+            <option value="unavailable">Out of Stock</option>
+          </select>
           <select
             className="w-full md:w-40 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#198754] outline-none"
             value={selectedCategory}
@@ -248,11 +284,29 @@ export default function PriceList() {
                   onChange={(e) => setCategory(e.target.value)}
                 >
                   <option value="">-- Select Category --</option>
+                  {category && !categories.includes(category) && (
+                    <option value={category}>{category}</option>
+                  )}
                   {categories.map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
                     </option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Stock Availability</label>
+                <select
+                  className={`w-full border rounded p-2 text-sm font-medium outline-none cursor-pointer ${
+                    available 
+                      ? 'border-emerald-300 bg-emerald-50/50 text-emerald-800 focus:ring-2 focus:ring-[#198754]' 
+                      : 'border-red-300 bg-red-50/50 text-red-800 focus:ring-2 focus:ring-red-400'
+                  }`}
+                  value={available ? 'available' : 'unavailable'}
+                  onChange={(e) => setAvailable(e.target.value === 'available')}
+                >
+                  <option value="available">● Available (In Stock)</option>
+                  <option value="unavailable">● Unavailable (Out of Stock)</option>
                 </select>
               </div>
               <div>
@@ -300,6 +354,9 @@ export default function PriceList() {
                   <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('category')}>
                     <div className="flex items-center gap-1">Category <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
                   </th>
+                  <th className="px-6 py-4 font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('available')}>
+                    <div className="flex items-center gap-1">Availability <ArrowUpDown className="w-3 h-3 opacity-50" /></div>
+                  </th>
                   {isAdmin ? (
                     <th className="px-6 py-4 font-bold text-gray-600">
                       <div className="flex items-center gap-1">Wholesale (B/S/G)</div>
@@ -334,6 +391,9 @@ export default function PriceList() {
                       <td className="px-6 py-4">
                         <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
                       </td>
+                      <td className="px-6 py-4">
+                        <div className="h-5 bg-gray-200 rounded w-20 animate-pulse"></div>
+                      </td>
                       {isAdmin && (
                         <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div></td>
                       )}
@@ -350,6 +410,32 @@ export default function PriceList() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
                           {item.category || '-'}
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isAdmin ? (
+                          <select
+                            value={item.available !== false ? 'available' : 'unavailable'}
+                            onChange={(e) => handleToggleAvailability(item.id, e.target.value === 'available')}
+                            className={`text-xs font-semibold rounded-full px-2.5 py-1 border transition-colors cursor-pointer outline-none ${
+                              item.available !== false
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                            }`}
+                          >
+                            <option value="available" className="bg-white text-gray-800">● Available</option>
+                            <option value="unavailable" className="bg-white text-gray-800">● Out of Stock</option>
+                          </select>
+                        ) : (
+                          item.available !== false ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3" /> Available
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                              <AlertCircle className="w-3 h-3" /> Out of Stock
+                            </span>
+                          )
+                        )}
                       </td>
                       {isAdmin ? (
                         <td className="px-6 py-4 font-mono font-medium text-gray-500 text-xs whitespace-nowrap">
@@ -373,12 +459,14 @@ export default function PriceList() {
                             <button 
                               onClick={() => handleEdit(item)}
                               className="p-1.5 text-gray-500 hover:text-[#0F5132] hover:bg-green-50 rounded transition-colors"
+                              title="Edit item"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => deleteItem(item.id)}
                               className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Delete item"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -389,7 +477,7 @@ export default function PriceList() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={isAdmin ? 5 : 4} className="px-6 py-12 text-center">
+                    <td colSpan={isAdmin ? 6 : 5} className="px-6 py-12 text-center">
                        <div className="flex flex-col items-center justify-center text-gray-500">
                          <Tag className="w-12 h-12 text-gray-300 mb-3" />
                          <p className="text-lg font-medium text-gray-900 mb-1">{searchTerm ? "No matching items found" : "No price list items yet"}</p>

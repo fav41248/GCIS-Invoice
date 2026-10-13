@@ -2,18 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { BookOpen, Upload, Search, FileText, Trash2, Edit2, X, Save, CheckCircle2, AlertTriangle, Plus } from 'lucide-react';
+import { BookOpen, Upload, Search, FileText, Trash2, Edit2, X, Save, CheckCircle2, AlertTriangle, AlertCircle, Plus } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import toast from 'react-hot-toast';
 
 export default function KnowledgeBank() {
   const { isAdmin, user } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'unavailable'>('all');
   const [activeTab, setActiveTab] = useState<'bronze' | 'silver' | 'gold'>('bronze');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', price: 0, wholesalePriceBronze: 0, wholesalePriceSilver: 0, wholesalePriceGold: 0, category: '', description: '' });
+  const [editForm, setEditForm] = useState({ name: '', price: 0, wholesalePriceBronze: 0, wholesalePriceSilver: 0, wholesalePriceGold: 0, category: '', description: '', available: true });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const [isUploading, setIsUploading] = useState(false);
@@ -126,7 +128,10 @@ export default function KnowledgeBank() {
               }
               if (wholesalePrice !== undefined && isNaN(wholesalePrice)) wholesalePrice = 0;
 
-              const docId = name.toString().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+              let docId = name.toString().toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+              if (!docId) {
+                docId = `prod-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+              }
               const docRef = doc(db, 'products', docId);
               const productData: any = {
                 name: name.toString(),
@@ -145,12 +150,23 @@ export default function KnowledgeBank() {
 
               const desc = row['Description'] || row['description'] || row['Desc'] || row['desc'];
               if (desc) productData.description = desc;
+
+              // Check availability from file if provided, default to true
+              const availKey = keys.find(k => k.toLowerCase().includes('avail') || k.toLowerCase().includes('stock') || k.toLowerCase().includes('status'));
+              let isAvail = true;
+              if (availKey && row[availKey] !== undefined && row[availKey] !== null) {
+                const val = String(row[availKey]).toLowerCase().trim();
+                if (val === 'false' || val === 'no' || val === 'unavailable' || val === 'out of stock' || val === '0') {
+                  isAvail = false;
+                }
+              }
+              productData.available = isAvail;
               
               // Only overwrite with new description if it is provided and detailed
               // Actually let's capture all extra fields dynamically
               Object.keys(row).forEach(k => {
                 const lowerK = k.toLowerCase();
-                if (!lowerK.includes('name') && !lowerK.includes('price') && !lowerK.includes('category') && !lowerK.includes('desc') && row[k]) {
+                if (!lowerK.includes('name') && !lowerK.includes('price') && !lowerK.includes('category') && !lowerK.includes('desc') && !lowerK.includes('avail') && !lowerK.includes('stock') && !lowerK.includes('status') && row[k]) {
                    productData[k] = row[k];
                 }
               });
@@ -177,10 +193,58 @@ export default function KnowledgeBank() {
     }
   };
 
+  const handleToggleAvailability = async (id: string, newAvailable: boolean) => {
+    try {
+      await setDoc(doc(db, 'products', id), {
+        available: newAvailable,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      toast.success(newAvailable ? 'Marked as Available' : 'Marked as Out of Stock');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update availability');
+    }
+  };
+
+  const handleBulkSetAvailability = async (newAvailable: boolean) => {
+    if (selectedIds.size === 0) return;
+    try {
+      const ids = Array.from(selectedIds);
+      const chunks = [];
+      for (let i = 0; i < ids.length; i += 400) {
+        chunks.push(ids.slice(i, i + 400));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.set(doc(db, 'products', id), {
+            available: newAvailable,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        });
+        await batch.commit();
+      }
+      toast.success(`Marked ${ids.length} products as ${newAvailable ? 'Available' : 'Out of Stock'}`);
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update products');
+    }
+  };
 
   const handleEditClick = (product: any) => {
     setEditingId(product.id);
-    setEditForm({ name: product.name, price: product.price, wholesalePriceBronze: product.wholesalePriceBronze || product.wholesalePrice || 0, wholesalePriceSilver: product.wholesalePriceSilver || product.wholesalePrice || 0, wholesalePriceGold: product.wholesalePriceGold || product.wholesalePrice || 0, category: product.category || 'General', description: product.description || '' });
+    setEditForm({ 
+      name: product.name, 
+      price: product.price, 
+      wholesalePriceBronze: product.wholesalePriceBronze || product.wholesalePrice || 0, 
+      wholesalePriceSilver: product.wholesalePriceSilver || product.wholesalePrice || 0, 
+      wholesalePriceGold: product.wholesalePriceGold || product.wholesalePrice || 0, 
+      category: product.category || 'General', 
+      description: product.description || '',
+      available: product.available !== false
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -194,19 +258,20 @@ export default function KnowledgeBank() {
         wholesalePriceGold: editForm.wholesalePriceGold,
         category: editForm.category,
         description: editForm.description,
+        available: editForm.available,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      toast.success('Product updated successfully');
       setEditingId(null);
     } catch (err) {
       console.error(err);
-      alert('Error updating product');
+      toast.error('Error updating product');
     }
   };
 
   const handleCancelEdit = () => setEditingId(null);
 
   const handleDelete = async (id: string) => {
-
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
       await deleteDoc(doc(db, 'products', id));
@@ -215,8 +280,10 @@ export default function KnowledgeBank() {
         newSet.delete(id);
         return newSet;
       });
+      toast.success('Product deleted successfully');
     } catch (err) {
       console.error(err);
+      toast.error('Failed to delete product');
     }
   };
 
@@ -239,16 +306,21 @@ export default function KnowledgeBank() {
         await batch.commit();
       }
       setSelectedIds(new Set());
+      toast.success(`Deleted ${ids.length} products`);
     } catch (err) {
       console.error(err);
-      alert('Error deleting products.');
+      toast.error('Error deleting products.');
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.category?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.category?.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    if (statusFilter === 'available') return p.available !== false;
+    if (statusFilter === 'unavailable') return p.available === false;
+    return true;
+  });
 
   if (!isAdmin) return <div className="p-8 text-red-500">Access Denied.</div>;
 
@@ -311,27 +383,56 @@ export default function KnowledgeBank() {
           </button>
         </div>
         
-        <div className="flex justify-between items-center max-w-2xl">
-          <div className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400" />
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 max-w-4xl">
+          <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
+            <div className="relative flex-1">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
+                placeholder="Search products by name or category..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
-            <input
-              type="text"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:border-transparent sm:text-sm shadow-sm"
-              placeholder="Search products by name or category..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <select
+              className="px-3 py-2.5 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#198754] shadow-sm text-gray-700"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+            >
+              <option value="all">All Statuses</option>
+              <option value="available">In Stock</option>
+              <option value="unavailable">Out of Stock</option>
+            </select>
           </div>
           {isAdmin && selectedIds.size > 0 && (
-            <button 
-              onClick={handleBulkDelete}
-              className="ml-4 bg-red-50 text-red-600 px-4 py-3 rounded-md font-medium hover:bg-red-100 transition-colors flex items-center gap-2 whitespace-nowrap shadow-sm border border-red-200"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete ({selectedIds.size})
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button 
+                onClick={() => handleBulkSetAvailability(true)}
+                className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-2 rounded-md font-medium text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                title="Mark selected as Available"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Make Available ({selectedIds.size})
+              </button>
+              <button 
+                onClick={() => handleBulkSetAvailability(false)}
+                className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-md font-medium text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                title="Mark selected as Out of Stock"
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                Make Out of Stock ({selectedIds.size})
+              </button>
+              <button 
+                onClick={handleBulkDelete}
+                className="bg-red-50 text-red-600 px-3 py-2 rounded-md font-medium hover:bg-red-100 transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-sm border border-red-200 text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete ({selectedIds.size})
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -341,7 +442,7 @@ export default function KnowledgeBank() {
           <div className="text-center py-12 text-gray-500">Loading price list...</div>
         ) : (
           <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[600px]">
+            <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   {isAdmin && (
@@ -362,6 +463,7 @@ export default function KnowledgeBank() {
                   )}
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Product Name</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Category</th>
+                  <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider">Availability</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right">Wholesale Price</th>
                   <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right">Unit Price</th>
                   {isAdmin && <th className="px-6 py-4 font-bold text-gray-600 text-xs uppercase tracking-wider text-right w-20">Actions</th>}
@@ -409,6 +511,18 @@ export default function KnowledgeBank() {
                             value={editForm.category}
                             onChange={(e) => setEditForm({...editForm, category: e.target.value})}
                           />
+                        </td>
+                        <td className="px-6 py-4">
+                          <select
+                            className={`w-full border rounded p-1.5 text-xs font-semibold outline-none cursor-pointer ${
+                              editForm.available ? 'border-emerald-300 text-emerald-800 bg-emerald-50' : 'border-red-300 text-red-800 bg-red-50'
+                            }`}
+                            value={editForm.available ? 'available' : 'unavailable'}
+                            onChange={(e) => setEditForm({...editForm, available: e.target.value === 'available'})}
+                          >
+                            <option value="available">● Available</option>
+                            <option value="unavailable">● Out of Stock</option>
+                          </select>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex flex-col gap-1">
@@ -465,6 +579,32 @@ export default function KnowledgeBank() {
                         <td className="px-6 py-4 text-sm text-gray-500">
                           <span className="bg-gray-100 px-2.5 py-1 rounded-md">{product.category || 'General'}</span>
                         </td>
+                        <td className="px-6 py-4">
+                          {isAdmin ? (
+                            <select
+                              value={product.available !== false ? 'available' : 'unavailable'}
+                              onChange={(e) => handleToggleAvailability(product.id, e.target.value === 'available')}
+                              className={`text-xs font-semibold rounded-full px-2.5 py-1 border transition-colors cursor-pointer outline-none ${
+                                product.available !== false
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                              }`}
+                            >
+                              <option value="available" className="bg-white text-gray-800">● Available</option>
+                              <option value="unavailable" className="bg-white text-gray-800">● Out of Stock</option>
+                            </select>
+                          ) : (
+                            product.available !== false ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3" /> Available
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                                <AlertCircle className="w-3 h-3" /> Out of Stock
+                              </span>
+                            )
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-right">
                           <span className="font-semibold text-gray-600">
                             {
@@ -502,7 +642,7 @@ export default function KnowledgeBank() {
                 ))}
                 {filteredProducts.length === 0 && (
                   <tr>
-                    <td colSpan={isAdmin ? 6 : 4} className="px-6 py-12 text-center">
+                    <td colSpan={isAdmin ? 7 : 5} className="px-6 py-12 text-center">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
                         <Search className="w-8 h-8 text-gray-400" />
                       </div>

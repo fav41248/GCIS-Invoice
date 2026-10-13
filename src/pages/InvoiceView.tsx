@@ -6,7 +6,6 @@ import { handleFirestoreError, OperationType } from '../lib/db';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
-import html2pdf from 'html2pdf.js';
 
 export default function InvoiceView() {
   const { id } = useParams<{ id: string }>();

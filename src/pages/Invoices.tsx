@@ -256,49 +256,51 @@ export default function Invoices() {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-right flex justify-end gap-2">
-                    <Link to={`/invoice/${inv.id}`} className="inline-block text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors">
-                      View
-                    </Link>
-                    {inv.status === 'unpaid' && (isAdmin || inv.createdBy === user?.username) ? (
-                      <button 
-                        onClick={() => markAsPaid(inv.id)}
-                        className="text-sm bg-[#0F5132] text-white px-3 py-1 rounded hover:bg-[#198754] transition-colors whitespace-nowrap"
-                      >
-                        Mark Paid
-                      </button>
-                    ) : inv.status === 'paid' ? (
-                       <Link to={`/receipt/${inv.id}`} className="inline-block text-sm bg-green-100 text-green-800 px-3 py-1 rounded hover:bg-green-200 transition-colors font-semibold whitespace-nowrap">
-                         Receipt
-                       </Link>
-                    ) : null}
-                    
-                    {/* Profit Actions */}
-                    {isAdmin && (!inv.profitStatus || inv.profitStatus === 'unpaid') && (
-                       <button 
-                        onClick={() => markProfitStatus(inv.id, 'pending')}
-                        className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 transition-colors font-semibold whitespace-nowrap"
-                      >
-                        Pay Profit
-                      </button>
-                    )}
-                    {!isAdmin && (inv.profitStatus === 'pending' || inv.profitStatus === 'paid') && (
-                       <button 
-                        onClick={() => markProfitStatus(inv.id, 'confirmed')}
-                        className="text-sm bg-teal-100 text-teal-700 px-3 py-1 rounded hover:bg-teal-200 transition-colors font-semibold whitespace-nowrap"
-                      >
-                        Confirm Profit
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button 
-                        onClick={() => deleteInvoice(inv.id)}
-                        className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 transition-colors font-semibold flex items-center justify-center"
-                        title="Delete Invoice"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Link to={`/invoice/${inv.id}`} className="inline-block text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors">
+                        View
+                      </Link>
+                      {inv.status === 'unpaid' && (isAdmin || inv.createdBy === user?.username) ? (
+                        <button 
+                          onClick={() => markAsPaid(inv.id)}
+                          className="text-sm bg-[#0F5132] text-white px-3 py-1 rounded hover:bg-[#198754] transition-colors whitespace-nowrap"
+                        >
+                          Mark Paid
+                        </button>
+                      ) : inv.status === 'paid' ? (
+                         <Link to={`/receipt/${inv.id}`} className="inline-block text-sm bg-green-100 text-green-800 px-3 py-1 rounded hover:bg-green-200 transition-colors font-semibold whitespace-nowrap">
+                           Receipt
+                         </Link>
+                      ) : null}
+                      
+                      {/* Profit Actions */}
+                      {isAdmin && (!inv.profitStatus || inv.profitStatus === 'unpaid') && (
+                         <button 
+                          onClick={() => markProfitStatus(inv.id, 'pending')}
+                          className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 transition-colors font-semibold whitespace-nowrap"
+                        >
+                          Pay Profit
+                        </button>
+                      )}
+                      {!isAdmin && (inv.profitStatus === 'pending' || inv.profitStatus === 'paid') && (
+                         <button 
+                          onClick={() => markProfitStatus(inv.id, 'confirmed')}
+                          className="text-sm bg-teal-100 text-teal-700 px-3 py-1 rounded hover:bg-teal-200 transition-colors font-semibold whitespace-nowrap"
+                        >
+                          Confirm Profit
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button 
+                          onClick={() => deleteInvoice(inv.id)}
+                          className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 transition-colors font-semibold flex items-center justify-center"
+                          title="Delete Invoice"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

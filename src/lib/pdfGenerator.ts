@@ -82,60 +82,86 @@ export async function downloadAsPDF(elementId: string, filename: string) {
     const originalWidth = sourceElement.style.width;
     const originalMaxWidth = sourceElement.style.maxWidth;
     
-    sourceElement.style.position = 'absolute';
-    sourceElement.style.width = '800px'; // Force desktop layout for PDF
-    sourceElement.style.maxWidth = '800px';
-    sourceElement.style.top = '0';
-    sourceElement.style.left = '0';
-    sourceElement.style.zIndex = '9999';
-    sourceElement.style.backgroundColor = '#ffffff';
+    let dataUrl: string;
 
-    // Wait one more tick for layout to settle
-    await new Promise(r => setTimeout(r, 100));
+    try {
+      sourceElement.style.position = 'absolute';
+      sourceElement.style.width = '800px'; // Force desktop layout for PDF
+      sourceElement.style.maxWidth = '800px';
+      sourceElement.style.top = '0';
+      sourceElement.style.left = '0';
+      sourceElement.style.zIndex = '9999';
+      sourceElement.style.backgroundColor = '#ffffff';
 
-    // 4. Use the new standard html-to-image library (re-installed)
-    const scale = 2;
-    const dataUrl = await htmlToImage.toJpeg(sourceElement, {
-      quality: 0.95,
-      backgroundColor: '#ffffff',
-      pixelRatio: scale,
-      skipFonts: true, // Crucial for cloudflare font blocks
-      width: 800,
-      height: sourceElement.scrollHeight,
-      style: {
-        transform: 'scale(1)',
-        transformOrigin: 'top left'
+      // Wait one more tick for layout to settle
+      await new Promise(r => setTimeout(r, 100));
+
+      // 4. Use the new standard html-to-image library (re-installed)
+      try {
+        dataUrl = await htmlToImage.toJpeg(sourceElement, {
+          quality: 0.95,
+          backgroundColor: '#ffffff',
+          pixelRatio: 2,
+          skipFonts: true,
+          width: 800,
+          height: sourceElement.scrollHeight,
+          style: {
+            transform: 'scale(1)',
+            transformOrigin: 'top left'
+          }
+        });
+      } catch (renderError) {
+        console.warn('Initial PDF render attempt hit an image error, falling back:', renderError);
+        // Fallback: hide non-data images that could taint the canvas
+        images.forEach(img => {
+          if (!img.src.startsWith('data:')) {
+            img.style.visibility = 'hidden';
+          }
+        });
+        dataUrl = await htmlToImage.toJpeg(sourceElement, {
+          quality: 0.95,
+          backgroundColor: '#ffffff',
+          pixelRatio: 2,
+          skipFonts: true,
+          width: 800,
+          height: sourceElement.scrollHeight,
+          style: {
+            transform: 'scale(1)',
+            transformOrigin: 'top left'
+          }
+        });
       }
-    });
+    } finally {
+      // 5. Restore the DOM immediately under all circumstances
+      sourceElement.style.position = originalPosition;
+      sourceElement.style.top = originalTop;
+      sourceElement.style.left = originalLeft;
+      sourceElement.style.zIndex = originalZIndex;
+      sourceElement.style.backgroundColor = originalBg;
+      sourceElement.style.width = originalWidth;
+      sourceElement.style.maxWidth = originalMaxWidth;
 
-    // 5. Restore the DOM immediately
-    sourceElement.style.position = originalPosition;
-    sourceElement.style.top = originalTop;
-    sourceElement.style.left = originalLeft;
-    sourceElement.style.zIndex = originalZIndex;
-    sourceElement.style.backgroundColor = originalBg;
-    sourceElement.style.width = originalWidth;
-    sourceElement.style.maxWidth = originalMaxWidth;
+      images.forEach(img => {
+        img.style.visibility = 'visible';
+        if (originalSrcs.has(img)) {
+          img.src = originalSrcs.get(img);
+        }
+      });
 
-    images.forEach(img => {
-      if (originalSrcs.has(img)) {
-        img.src = originalSrcs.get(img);
-      }
-    });
-
-    replacements.forEach(rep => {
-      if (rep.nextSibling) {
-        rep.parent.insertBefore(rep.original, rep.nextSibling);
-      } else {
-        rep.parent.appendChild(rep.original);
-      }
-      if (rep.parent.contains(rep.textNode)) {
-        rep.parent.removeChild(rep.textNode);
-      }
-      (rep.original as HTMLInputElement).value = rep.textNode.innerText.trim();
-    });
+      replacements.forEach(rep => {
+        if (rep.nextSibling) {
+          rep.parent.insertBefore(rep.original, rep.nextSibling);
+        } else {
+          rep.parent.appendChild(rep.original);
+        }
+        if (rep.parent.contains(rep.textNode)) {
+          rep.parent.removeChild(rep.textNode);
+        }
+      });
+    }
 
     // 6. Generate the actual PDF
+    const scale = 2;
     const pdfWidth = 800 * scale;
     const pdfHeight = sourceElement.scrollHeight * scale;
     

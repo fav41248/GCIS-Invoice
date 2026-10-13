@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, Printer, Save } from 'lucide-react';
+import { CheckCircle2, Printer, Save, AlertCircle } from 'lucide-react';
 import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -66,7 +66,7 @@ export default function InvoiceGenerator() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [manualItems, setManualItems] = useState<any[]>([]);
   const [manualDesc, setManualDesc] = useState('');
-  const [manualQty, setManualQty] = useState(0);
+  const [manualQty, setManualQty] = useState(1);
   const [manualPrice, setManualPrice] = useState('');
 
   const [itemOverrides, setItemOverrides] = useState<Record<string, {description?: string, qty?: number, price?: number}>>({});
@@ -207,6 +207,16 @@ export default function InvoiceGenerator() {
     if (!user) return false;
     if (savedDocId) return true; // Already saved
 
+    if (!billTo.trim()) {
+      toast.error('Please enter or select a Client Name (Bill To).');
+      return false;
+    }
+
+    if (allItems.length === 0) {
+      toast.error('Please add at least one item to the invoice.');
+      return false;
+    }
+
     setIsSaving(true);
     try {
       const itemsWithWholesale = allItems.map(item => {
@@ -226,7 +236,7 @@ export default function InvoiceGenerator() {
       const invoiceData = {
         invoiceNumber,
         clientId: selectedClientId || 'unknown',
-        clientName: billTo,
+        clientName: billTo.trim(),
         clientAddress: billToAddress,
         items: itemsWithWholesale,
         subtotal,
@@ -261,13 +271,16 @@ export default function InvoiceGenerator() {
   };
 
   const handlePrint = async () => {
-    await saveInvoiceToDb();
-    setShowPrintModal(true);
+    const success = await saveInvoiceToDb();
+    if (success) {
+      setShowPrintModal(true);
+    }
   };
 
   const handleSave = async () => {
     const success = await saveInvoiceToDb();
     if (success) {
+      toast.success('Invoice saved successfully');
       navigate('/invoices');
     }
   };
@@ -293,34 +306,64 @@ export default function InvoiceGenerator() {
                   onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
                 />
                 {showProductDropdown && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto mt-[-8px]">
+                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-auto mt-[-8px]">
                     {products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).map(p => {
                       const sym = currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '';
+                      const isAvailable = p.available !== false;
                       return (
                       <div 
                         key={p.id} 
-                        className="p-2 text-sm hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"
-                        onClick={() => {
+                        className={`p-2.5 text-sm border-b border-gray-100 last:border-0 transition-colors ${
+                          isAvailable 
+                            ? 'hover:bg-emerald-50/50 cursor-pointer' 
+                            : 'bg-amber-50/40 cursor-not-allowed opacity-80'
+                        }`}
+                        onMouseDown={(e) => {
+                          // Use onMouseDown so it fires before onBlur
+                          e.preventDefault();
+                          if (!isAvailable) {
+                            toast.error(`"${p.name}" is currently Out of Stock / Unavailable!`, {
+                              icon: '⚠️',
+                              duration: 4000
+                            });
+                            return;
+                          }
                           setManualDesc(p.name);
                           setManualPrice(p.price.toString());
+                          if (!manualQty || manualQty <= 0) setManualQty(1);
                           setProductSearch('');
                           setShowProductDropdown(false);
                         }}
                       >
-                        <div className="font-medium text-gray-800">{p.name}</div>
-                        <div className="text-xs text-gray-500">Unit: {sym}{Number(p.price).toLocaleString()} 
-{(() => {
-  const tier = user?.pricingTier || 'bronze';
-  const wp = tier === 'gold' ? (p.wholesalePriceGold || p.wholesalePrice) :
-             tier === 'silver' ? (p.wholesalePriceSilver || p.wholesalePrice) :
-             (p.wholesalePriceBronze || p.wholesalePrice);
-  return wp ? `| Wholesale: ${sym}${Number(wp).toLocaleString()}` : '';
-})()}
-</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`font-medium ${isAvailable ? 'text-gray-800' : 'text-gray-500 line-through'}`}>{p.name}</span>
+                          {!isAvailable ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full shrink-0">
+                              <AlertCircle className="w-3 h-3" />
+                              Out of Stock
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                              In Stock
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1 flex items-center justify-between">
+                          <span>Unit: {sym}{Number(p.price).toLocaleString()}</span>
+                          <span>
+                          {(() => {
+                            const tier = user?.pricingTier || 'bronze';
+                            const wp = tier === 'gold' ? (p.wholesalePriceGold || p.wholesalePrice) :
+                                       tier === 'silver' ? (p.wholesalePriceSilver || p.wholesalePrice) :
+                                       (p.wholesalePriceBronze || p.wholesalePrice);
+                            return wp ? `Wholesale: ${sym}${Number(wp).toLocaleString()}` : '';
+                          })()}
+                          </span>
+                        </div>
                       </div>
                     )})}
                     {products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
-                      <div className="p-2 text-sm text-gray-500 text-center">No products found</div>
+                      <div className="p-3 text-sm text-gray-500 text-center">No products found</div>
                     )}
                   </div>
                 )}
@@ -331,7 +374,7 @@ export default function InvoiceGenerator() {
               </div>
               <div className='col-span-4'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Qty</label>
-                <input type='number' min="0" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(parseInt(e.target.value) || 0)} />
+                <input type='number' min="1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(Math.max(1, parseInt(e.target.value) || 1))} />
               </div>
               <div className='col-span-8'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Unit Price</label>
@@ -341,10 +384,11 @@ export default function InvoiceGenerator() {
             <button 
               onClick={() => {
                 if (!manualDesc) return;
+                const qty = manualQty > 0 ? manualQty : 1;
                 const price = parseFloat(manualPrice) || 0;
-                setManualItems([...manualItems, { id: `m-${Date.now()}`, qty: manualQty, description: manualDesc, price: price, total: manualQty * price, isManual: true }]);
+                setManualItems([...manualItems, { id: `m-${Date.now()}`, qty: qty, description: manualDesc, price: price, total: qty * price, isManual: true }]);
                 setManualDesc('');
-                setManualQty(0);
+                setManualQty(1);
                 setManualPrice('');
               }}
               disabled={!manualDesc}
