@@ -257,9 +257,12 @@ export default function InvoiceGenerator() {
     try {
       const isRep = isSalesRep || user?.role === 'sales_rep';
       const itemsWithWholesale = allItems.map(item => {
-         const matchedProduct = products.find(p => (p.name || '').toLowerCase() === (item.description || '').toLowerCase());
+         const descLower = (item.description || '').toLowerCase();
+         const isDispatch = descLower.includes('dispatch') || descLower.includes('delivery') || descLower.includes('logistics');
+         
+         const matchedProduct = products.find(p => (p.name || '').toLowerCase() === descLower);
          let wp = 0;
-         if (matchedProduct && !isRep) {
+         if (matchedProduct && !isRep && !isDispatch) {
            const tier = user?.pricingTier || 'bronze';
            if (tier === 'gold') wp = matchedProduct.wholesalePriceGold || matchedProduct.wholesalePrice || 0;
            else if (tier === 'silver') wp = matchedProduct.wholesalePriceSilver || matchedProduct.wholesalePrice || 0;
@@ -267,9 +270,10 @@ export default function InvoiceGenerator() {
          }
          return { 
            ...item, 
-           wholesalePrice: isRep ? 0 : wp, 
-           wholesaleTotal: isRep ? 0 : wp * item.qty, 
-           profit: isRep ? 0 : (item.price - wp) * item.qty 
+           isDispatch,
+           wholesalePrice: (isRep || isDispatch) ? 0 : wp, 
+           wholesaleTotal: (isRep || isDispatch) ? 0 : wp * item.qty, 
+           profit: (isRep || isDispatch) ? 0 : (item.price - wp) * item.qty 
          };
       });
       const wholesaleTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
@@ -704,19 +708,54 @@ export default function InvoiceGenerator() {
                       )}
                     </td>
                     <td className='py-4 text-right text-gray-600'>
-                      <div className="flex items-center justify-end">
-                        <span>{currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : ''}</span>
-                        {isPrinting ? (
-                          <div className="w-24 text-right p-1 ml-1 text-gray-600">{item.price}</div>
-                        ) : (
-                          <input 
-                            type="number"
-                            min="0"
-                            value={item.price}
-                            onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
-                            className="w-24 text-right bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-gray-600 transition-all ml-1 print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
-                          />
-                        )}
+                      <div className="flex flex-col items-end">
+                        <div className="flex items-center justify-end">
+                          <span>{currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : ''}</span>
+                          {isPrinting ? (
+                            <div className="w-24 text-right p-1 ml-1 text-gray-600">{item.price}</div>
+                          ) : (
+                            <input 
+                              type="number"
+                              min="0"
+                              value={item.price}
+                              onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price: parseFloat(e.target.value) || 0 } }))}
+                              className={`w-24 text-right bg-transparent border rounded p-1 outline-none transition-all ml-1 font-medium ${
+                                (() => {
+                                  if (isSalesRep || user?.role === 'sales_rep') return 'border-transparent hover:border-gray-200 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white text-gray-600';
+                                  const descLower = (item.description || '').toLowerCase();
+                                  const isDispatch = descLower.includes('dispatch') || descLower.includes('delivery') || descLower.includes('logistics');
+                                  if (isDispatch) return 'border-transparent hover:border-gray-200 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white text-gray-600';
+                                  const matched = products.find(p => (p.name || '').toLowerCase() === descLower);
+                                  if (!matched) return 'border-transparent hover:border-gray-200 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white text-gray-600';
+                                  const tier = user?.pricingTier || 'bronze';
+                                  let minWp = matched.wholesalePriceBronze || matched.wholesalePrice || 0;
+                                  if (tier === 'gold') minWp = matched.wholesalePriceGold || matched.wholesalePrice || 0;
+                                  else if (tier === 'silver') minWp = matched.wholesalePriceSilver || matched.wholesalePrice || 0;
+                                  return item.price < minWp ? 'border-amber-400 bg-amber-50 text-amber-900 focus:border-amber-600' : 'border-transparent hover:border-gray-200 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white text-gray-600';
+                                })()
+                              }`}
+                            />
+                          )}
+                        </div>
+                        {!isPrinting && !isSalesRep && user?.role !== 'sales_rep' && (() => {
+                          const descLower = (item.description || '').toLowerCase();
+                          const isDispatch = descLower.includes('dispatch') || descLower.includes('delivery') || descLower.includes('logistics');
+                          if (isDispatch) return null;
+                          const matched = products.find(p => (p.name || '').toLowerCase() === descLower);
+                          if (!matched) return null;
+                          const tier = user?.pricingTier || 'bronze';
+                          let minWp = matched.wholesalePriceBronze || matched.wholesalePrice || 0;
+                          if (tier === 'gold') minWp = matched.wholesalePriceGold || matched.wholesalePrice || 0;
+                          else if (tier === 'silver') minWp = matched.wholesalePriceSilver || matched.wholesalePrice || 0;
+                          if (item.price < minWp) {
+                            return (
+                              <span className="text-[10px] text-amber-800 font-bold mt-1 text-right max-w-[160px] leading-tight print:hidden">
+                                ⚠️ Price is below the recommended selling price (₦{minWp.toLocaleString()})
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     </td>
                     <td className='py-4 text-right font-bold text-[#212529]'>{formatCurrency(item.total)}</td>
