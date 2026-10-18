@@ -5,7 +5,7 @@ import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Edit2, Save, X, FileText, Calendar, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Save, X, FileText, Calendar, ExternalLink, ShieldCheck, RotateCcw } from 'lucide-react';
 
 export default function Users() {
   const { isAdmin, isAuditor } = useAuth();
@@ -14,6 +14,25 @@ export default function Users() {
   const [showAdd, setShowAdd] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
+  const [resettingSessions, setResettingSessions] = useState<string | null>(null);
+
+  const handleResetSessions = async (targetUsername: string, targetName: string) => {
+    if (!window.confirm(`Reset all active device sessions for "${targetName}" (@${targetUsername})? This will allow them to log in on new devices immediately.`)) {
+      return;
+    }
+    setResettingSessions(targetUsername);
+    try {
+      const snap = await getDocs(collection(db, 'users', targetUsername, 'sessions'));
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+      }
+      toast.success(`Active sessions for @${targetUsername} have been reset successfully!`);
+    } catch (err: any) {
+      toast.error('Failed to reset sessions: ' + (err.message || 'Error'));
+    } finally {
+      setResettingSessions(null);
+    }
+  };
   
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -435,6 +454,10 @@ export default function Users() {
                           <span className="px-2.5 py-1 text-xs font-bold rounded-full uppercase bg-indigo-100 text-indigo-800 border border-indigo-200">
                             Auditor
                           </span>
+                        ) : u.role === 'store_keeper' ? (
+                          <span className="px-2.5 py-1 text-xs font-bold rounded-full uppercase bg-teal-100 text-teal-800 border border-teal-200">
+                            Store Keeper
+                          </span>
                         ) : (
                           <span className="px-2.5 py-1 text-xs font-bold rounded-full uppercase bg-purple-100 text-purple-800 border border-purple-200">
                             Admin
@@ -447,9 +470,20 @@ export default function Users() {
                             <FileText className="w-3.5 h-3.5" /> Inspect Invoices
                           </button>
                           {isAdmin && (
-                            <button onClick={() => startEdit(u)} className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-md transition-colors text-xs font-medium" title="Edit User">
-                              <Edit2 className="w-3.5 h-3.5" /> Edit Role/Tier
-                            </button>
+                            <>
+                              <button 
+                                onClick={() => handleResetSessions(u.username, u.name)} 
+                                disabled={resettingSessions === u.username}
+                                className="text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 p-1.5 rounded-md transition-colors text-xs font-semibold flex items-center gap-1 disabled:opacity-50" 
+                                title="Reset Active Device Sessions (Allows new logins)"
+                              >
+                                <RotateCcw className={`w-3.5 h-3.5 ${resettingSessions === u.username ? 'animate-spin' : ''}`} />
+                                Reset Devices
+                              </button>
+                              <button onClick={() => startEdit(u)} className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-md transition-colors text-xs font-medium flex items-center gap-1" title="Edit User">
+                                <Edit2 className="w-3.5 h-3.5" /> Edit Role/Tier
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>

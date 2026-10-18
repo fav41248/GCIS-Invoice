@@ -21,6 +21,10 @@ service cloud.firestore {
                    request.resource.data.name is string &&
                    request.resource.data.pin is string;
       allow delete: if true;
+
+      match /sessions/{sessionId} {
+        allow read, write: if true;
+      }
     }
 
     match /settings/{docId} {

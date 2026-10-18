@@ -9,6 +9,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
 import { getStaticAccountsForRole, STATIC_ACCOUNTS_PRESETS, PaymentAccount } from '../lib/paymentAccounts';
+import { compressFileToDataUrl } from '../lib/drive';
 
 export default function InvoiceGenerator() {
   const navigate = useNavigate();
@@ -76,6 +77,25 @@ export default function InvoiceGenerator() {
 
   const [itemOverrides, setItemOverrides] = useState<Record<string, {description?: string, qty?: number, price?: number}>>({});
   const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
+
+  const [proofOfPaymentUrl, setProofOfPaymentUrl] = useState('');
+  const [uploadingProof, setUploadingProof] = useState(false);
+
+  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingProof(true);
+    try {
+      // Compress and convert to data URL (or upload to Drive if connected)
+      const dataUrl = await compressFileToDataUrl(file);
+      setProofOfPaymentUrl(dataUrl);
+      toast.success('Proof of payment attached successfully!');
+    } catch (err: any) {
+      toast.error('Failed to attach proof: ' + (err.message || 'Error'));
+    } finally {
+      setUploadingProof(false);
+    }
+  };
 
   const userRole = isSalesRep || user?.role === 'sales_rep' 
     ? 'sales_rep' 
@@ -225,6 +245,29 @@ export default function InvoiceGenerator() {
       });
   }, [parsedItems, manualItems, itemOverrides, deletedItems]);
 
+  const hasBelowWholesalePrice = useMemo(() => {
+    const isRep = isSalesRep || user?.role === 'sales_rep';
+    if (isRep || user?.role === 'admin') return false;
+    for (const item of allItems) {
+      const descLower = (item.description || '').toLowerCase();
+      const isDispatch = descLower.includes('dispatch') || descLower.includes('delivery') || descLower.includes('logistics');
+      if (isDispatch) continue;
+
+      const matchedProduct = products.find(p => (p.name || '').toLowerCase() === descLower);
+      if (matchedProduct) {
+        const tier = user?.pricingTier || 'bronze';
+        let minWp = matchedProduct.wholesalePriceBronze || matchedProduct.wholesalePrice || 0;
+        if (tier === 'gold') minWp = matchedProduct.wholesalePriceGold || matchedProduct.wholesalePrice || 0;
+        else if (tier === 'silver') minWp = matchedProduct.wholesalePriceSilver || matchedProduct.wholesalePrice || 0;
+
+        if (item.price < minWp) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [allItems, products, user, isSalesRep]);
+
   const subtotal = allItems.reduce((acc, item) => acc + item.total, 0);
   const vatAmount = subtotal * (vatRate / 100);
   const grandTotal = subtotal + vatAmount;
@@ -325,6 +368,7 @@ export default function InvoiceGenerator() {
         repCategory: isRep ? 'sales_rep' : 'sales_agent',
         pricingTier: isRep ? null : (user?.pricingTier || 'bronze'),
         repPhone: user?.phone || '',
+        proofOfPayment: proofOfPaymentUrl || '',
         createdAt: new Date().toISOString(),
         paidAt: ''
       };
@@ -607,18 +651,52 @@ export default function InvoiceGenerator() {
                   </div>
                 )}
 
+                <div className="mb-4">
+                  <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Proof of Payment (Optional)</label>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="file" 
+                      accept="image/*,application/pdf"
+                      capture="environment"
+                      onChange={handleProofUpload}
+                      disabled={uploadingProof}
+                      className="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer border border-gray-200 rounded-md p-1 bg-white" 
+                    />
+                  </div>
+                  {uploadingProof && <p className="text-xs text-blue-600 mt-1">Processing proof of payment...</p>}
+                  {proofOfPaymentUrl && (
+                    <div className="mt-2 flex items-center justify-between bg-emerald-50 border border-emerald-200 p-2 rounded-md">
+                      <span className="text-xs text-emerald-800 font-semibold truncate max-w-[200px]">✓ Proof attached successfully</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setProofOfPaymentUrl('')}
+                        className="text-xs text-red-600 hover:text-red-800 font-bold px-2 py-0.5"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Additional Notes</label>
                 <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-20' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter any additional notes..." />
               </div>
             </div>
             
+            {hasBelowWholesalePrice && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>Cannot create or save invoice. One or more items are priced below your package minimum wholesale price. Please update the price(s) to continue.</span>
+              </div>
+            )}
+            
             <button 
               onClick={handleSave} 
-              disabled={isSaving || allItems.length === 0}
-              className='mt-6 w-full bg-[#0F5132] text-white px-6 py-3 rounded-md font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#198754] transition-colors shadow-sm disabled:opacity-50'
+              disabled={isSaving || allItems.length === 0 || hasBelowWholesalePrice}
+              className='mt-4 w-full bg-[#0F5132] text-white px-6 py-3 rounded-md font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#198754] transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed'
             >
               <Save className='h-4 w-4' />
-              {isSaving ? 'Saving...' : 'Save Invoice'}
+              {isSaving ? 'Saving...' : hasBelowWholesalePrice ? 'Price Below Wholesale Limit' : 'Save Invoice'}
             </button>
           </div>
         </section>

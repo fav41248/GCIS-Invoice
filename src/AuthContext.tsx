@@ -85,6 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const normalized = username.toLowerCase().trim();
     
     // Default master accounts that work instantly even if offline / DB is unreachable
+    // Default master admin account that works instantly
     if (normalized === 'admin') {
       const userData: CustomUser = { username: 'admin', role: 'admin', name: 'Administrator' };
       setUser(userData);
@@ -96,51 +97,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return;
     }
-    
-    if (normalized === 'auditor') {
-      const userData: CustomUser = { username: 'auditor', role: 'auditor', name: 'Auditor' };
-      setUser(userData);
-      localStorage.setItem('gcis_user', JSON.stringify(userData));
-      try {
-        await setDoc(doc(db, 'users', 'auditor'), { ...userData, pin: pin || '123456', createdAt: new Date().toISOString() }, { merge: true });
-      } catch (e) {
-        console.warn("Offline fallback auditor login:", e);
-      }
-      return;
-    }
 
     try {
-      const userDoc = await getDoc(doc(db, 'users', normalized));
+      let userDoc = await getDoc(doc(db, 'users', normalized));
+      
+      // Auto-initialize default auditor account in Firestore if not present yet
+      if (!userDoc.exists() && normalized === 'auditor') {
+        const defaultAuditor = { username: 'auditor', role: 'auditor', name: 'Auditor', pin: pin || '123456', createdAt: new Date().toISOString() };
+        await setDoc(doc(db, 'users', 'auditor'), defaultAuditor, { merge: true });
+        userDoc = await getDoc(doc(db, 'users', 'auditor'));
+      }
+
       if (userDoc.exists()) {
         const data = userDoc.data();
         if (data.pin === pin) {
           const role = resolveRole(data.role, normalized);
           
-          // Device Session Management Check for non-admin users
+          // Strict 2-device session limit for non-admin accounts:
+          // Sales Rep, Agent, Store Keeper, and Auditor
           if (role !== 'admin') {
             const sessionsCol = collection(db, 'users', normalized, 'sessions');
             const sessionSnap = await getDocs(sessionsCol);
             const activeSessions = sessionSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            // Clean up stale sessions older than 24 hours or count active ones
+            // Clean up stale sessions older than 24 hours
             const now = Date.now();
             const validSessions = activeSessions.filter((s: any) => {
               const lastActive = new Date(s.lastActive || s.createdAt || 0).getTime();
               return (now - lastActive) < 24 * 60 * 60 * 1000;
             });
 
-            if (validSessions.length >= 2) {
-              throw new Error("Active session limit reached (maximum 2 devices). Please sign out of other devices before logging in here.");
+            // Check if this specific device is already one of the active sessions
+            const currentDeviceId = localStorage.getItem('gcis_session_id');
+            const isCurrentDeviceAlreadyRegistered = currentDeviceId && validSessions.some((s: any) => s.id === currentDeviceId);
+
+            if (!isCurrentDeviceAlreadyRegistered && validSessions.length >= 2) {
+              throw new Error("Active session limit reached (maximum 2 devices). This account is already logged in on 2 different devices. Please sign out of one of your active devices first, or contact the Admin to reset your active sessions.");
             }
 
-            // Register current session
-            const sessionId = 'session_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+            // Register or update current session
+            const sessionId = currentDeviceId || ('session_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
             await setDoc(doc(db, 'users', normalized, 'sessions', sessionId), {
               createdAt: new Date().toISOString(),
               lastActive: new Date().toISOString(),
               userAgent: navigator.userAgent || 'unknown'
             });
-            // Store session ID in local storage for cleanup on logout if desired
+            
             try {
               localStorage.setItem('gcis_session_id', sessionId);
             } catch {}
@@ -166,10 +168,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error.message.includes("Active session limit reached") || error.message === "Incorrect PIN." || error.message === "User not found.") {
         throw error;
       }
-      // If offline / network error, allow sales rep/agent login if pin matches or create fallback user
-      const userData: CustomUser = { username: normalized, role: 'sales_agent', name: normalized, pricingTier: 'bronze' };
-      setUser(userData);
-      localStorage.setItem('gcis_user', JSON.stringify(userData));
+      // Re-throw errors so user gets immediate visual notice on screen
+      throw error;
     }
   };
 
