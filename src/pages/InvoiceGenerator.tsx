@@ -253,6 +253,28 @@ export default function InvoiceGenerator() {
       return false;
     }
 
+    const isRep = isSalesRep || user?.role === 'sales_rep';
+    if (!isRep && user?.role !== 'admin') {
+      for (const item of allItems) {
+        const descLower = (item.description || '').toLowerCase();
+        const isDispatch = descLower.includes('dispatch') || descLower.includes('delivery') || descLower.includes('logistics');
+        if (isDispatch) continue;
+
+        const matchedProduct = products.find(p => (p.name || '').toLowerCase() === descLower);
+        if (matchedProduct) {
+          const tier = user?.pricingTier || 'bronze';
+          let minWp = matchedProduct.wholesalePriceBronze || matchedProduct.wholesalePrice || 0;
+          if (tier === 'gold') minWp = matchedProduct.wholesalePriceGold || matchedProduct.wholesalePrice || 0;
+          else if (tier === 'silver') minWp = matchedProduct.wholesalePriceSilver || matchedProduct.wholesalePrice || 0;
+
+          if (item.price < minWp) {
+            toast.error(`Cannot create invoice! "${item.description}" price (₦${item.price.toLocaleString()}) is below your package minimum wholesale price (₦${minWp.toLocaleString()}).`);
+            return false;
+          }
+        }
+      }
+    }
+
     setIsSaving(true);
     try {
       const isRep = isSalesRep || user?.role === 'sales_rep';
