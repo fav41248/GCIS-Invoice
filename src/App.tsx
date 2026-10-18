@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, FilePlus, Users, Tag, Settings, LogOut, BookOpen, UserCog } from 'lucide-react';
+import { LayoutDashboard, FileText, FilePlus, Users, Tag, Settings, LogOut, BookOpen, UserCog, ShieldCheck } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import Dashboard from './pages/Dashboard';
 import InvoiceGenerator from './pages/InvoiceGenerator';
@@ -13,22 +13,28 @@ import UsersPage from './pages/Users';
 import CompanySettings from './pages/Settings';
 import ReceiptView from './pages/ReceiptView';
 import InvoiceView from './pages/InvoiceView';
+import WeeklyAudit from './pages/WeeklyAudit';
 import { OfflineIndicator } from './components/OfflineIndicator';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, isAuditor, isStoreKeeper, logout } = useAuth();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  const navItems = [
+  const navItems = isStoreKeeper ? [
+    { name: 'Price List', path: '/price-list', icon: Tag }
+  ] : [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'New Invoice', path: '/generator', icon: FilePlus },
+    ...(!isAuditor ? [{ name: 'New Invoice', path: '/generator', icon: FilePlus }] : []),
     { name: 'Invoices', path: '/invoices', icon: FileText },
     { name: 'Clients', path: '/clients', icon: Users },
     { name: 'Price List', path: '/price-list', icon: Tag },
+    ...(isAdmin ? [{ name: 'Knowledge Bank', path: '/knowledge', icon: BookOpen }] : []),
+    ...((isAdmin || isAuditor) ? [
+      { name: 'Weekly Audit & Payouts', path: '/audit', icon: ShieldCheck },
+      { name: 'Sales Team (Reps & Agents)', path: '/users', icon: UserCog }
+    ] : []),
     ...(isAdmin ? [
-      { name: 'Knowledge Bank', path: '/knowledge', icon: BookOpen },
-      { name: 'Sales Reps', path: '/users', icon: UserCog },
       { name: 'Settings', path: '/settings', icon: Settings }
     ] : []),
   ];
@@ -122,7 +128,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 };
 
 export default function App() {
-  const { user, loading, login } = useAuth();
+  const { user, loading, login, isStoreKeeper } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -201,17 +207,18 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/generator" element={<InvoiceGenerator />} />
-        <Route path="/invoices" element={<Invoices />} />
-        <Route path="/clients" element={<Clients />} />
+        <Route path="/" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <Dashboard />} />
+        <Route path="/generator" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <InvoiceGenerator />} />
+        <Route path="/invoices" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <Invoices />} />
+        <Route path="/clients" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <Clients />} />
         <Route path="/price-list" element={<PriceList />} />
-        <Route path="/knowledge" element={<KnowledgeBank />} />
-        <Route path="/users" element={<UsersPage />} />
-        <Route path="/settings" element={<CompanySettings />} />
+        <Route path="/knowledge" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <KnowledgeBank />} />
+        <Route path="/users" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <UsersPage />} />
+        <Route path="/audit" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <WeeklyAudit />} />
+        <Route path="/settings" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <CompanySettings />} />
         <Route path="/receipt/:id" element={<ReceiptView />} />
         <Route path="/invoice/:id" element={<InvoiceView />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to={isStoreKeeper ? "/price-list" : "/"} replace />} />
       </Routes>
       <Toaster position="bottom-right" />
     </Layout>

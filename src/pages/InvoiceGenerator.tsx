@@ -1,17 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, Printer, Save, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Printer, Save, AlertCircle, Lock, Building2 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { OperationType, handleFirestoreError } from '../lib/db';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
+import { getStaticAccountsForRole, STATIC_ACCOUNTS_PRESETS, PaymentAccount } from '../lib/paymentAccounts';
 
 export default function InvoiceGenerator() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAuditor, isSalesRep, isSalesAgent, isAdmin } = useAuth();
+
+  if (isAuditor) {
+    return <Navigate to="/" replace />;
+  }
   const [rawInput, setRawInput] = useState('');
   const [clients, setClients] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -72,6 +77,34 @@ export default function InvoiceGenerator() {
   const [itemOverrides, setItemOverrides] = useState<Record<string, {description?: string, qty?: number, price?: number}>>({});
   const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
 
+  const userRole = isSalesRep || user?.role === 'sales_rep' 
+    ? 'sales_rep' 
+    : (isSalesAgent || user?.role === 'sales_agent' || user?.role === 'sales') 
+    ? 'sales_agent' 
+    : user?.role;
+  const isStaticRole = userRole === 'sales_rep' || userRole === 'sales_agent';
+
+  const staticAccounts = useMemo(() => {
+    return getStaticAccountsForRole(userRole, companySettings?.paymentAccounts);
+  }, [userRole, companySettings?.paymentAccounts]);
+
+  const activePaymentAccounts = useMemo(() => {
+    if (isStaticRole && !isAdmin) {
+      return staticAccounts;
+    }
+    if (selectedAccounts.length > 0 && companySettings?.paymentAccounts) {
+      const filtered = companySettings.paymentAccounts.filter((a: any) => selectedAccounts.includes(a.id));
+      if (filtered.length > 0) return filtered;
+    }
+    return staticAccounts;
+  }, [isStaticRole, isAdmin, staticAccounts, selectedAccounts, companySettings?.paymentAccounts]);
+
+  const loadPresetAccounts = (targetRole: 'sales_rep' | 'sales_agent') => {
+    const preset = getStaticAccountsForRole(targetRole, companySettings?.paymentAccounts);
+    setSelectedAccounts(preset.map((a: any) => a.id));
+    toast.success(`Loaded ${targetRole === 'sales_rep' ? 'Sales Rep' : 'Sales Agent'} defaults`);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -84,7 +117,10 @@ export default function InvoiceGenerator() {
         if (settingsSnap.exists()) {
           const data = settingsSnap.data();
           setCompanySettings(data);
-          if (data.paymentAccounts && data.paymentAccounts.length > 0) {
+          const initialStatic = getStaticAccountsForRole(userRole, data.paymentAccounts);
+          if (initialStatic && initialStatic.length > 0) {
+            setSelectedAccounts(initialStatic.map((a: any) => a.id));
+          } else if (data.paymentAccounts && data.paymentAccounts.length > 0) {
             setSelectedAccounts([data.paymentAccounts[0].id]);
           }
         }
@@ -93,7 +129,7 @@ export default function InvoiceGenerator() {
       }
     };
     fetchData();
-  }, []);
+  }, [userRole]);
 
   const handleClientChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
@@ -219,19 +255,25 @@ export default function InvoiceGenerator() {
 
     setIsSaving(true);
     try {
+      const isRep = isSalesRep || user?.role === 'sales_rep';
       const itemsWithWholesale = allItems.map(item => {
          const matchedProduct = products.find(p => (p.name || '').toLowerCase() === (item.description || '').toLowerCase());
          let wp = 0;
-         if (matchedProduct) {
+         if (matchedProduct && !isRep) {
            const tier = user?.pricingTier || 'bronze';
            if (tier === 'gold') wp = matchedProduct.wholesalePriceGold || matchedProduct.wholesalePrice || 0;
            else if (tier === 'silver') wp = matchedProduct.wholesalePriceSilver || matchedProduct.wholesalePrice || 0;
            else wp = matchedProduct.wholesalePriceBronze || matchedProduct.wholesalePrice || 0;
          }
-         return { ...item, wholesalePrice: wp, wholesaleTotal: wp * item.qty, profit: (item.price - wp) * item.qty };
+         return { 
+           ...item, 
+           wholesalePrice: isRep ? 0 : wp, 
+           wholesaleTotal: isRep ? 0 : wp * item.qty, 
+           profit: isRep ? 0 : (item.price - wp) * item.qty 
+         };
       });
-      const wholesaleTotal = itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
-      const profitTotal = itemsWithWholesale.reduce((acc, item) => acc + (item.profit || 0), 0);
+      const wholesaleTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
+      const profitTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.profit || 0), 0);
 
       const invoiceData = {
         invoiceNumber,
@@ -249,11 +291,13 @@ export default function InvoiceGenerator() {
         issueDate,
         dueDate,
         status: 'unpaid',
-        profitStatus: 'unpaid', // unpaid, paid, confirmed
+        profitStatus: isRep ? 'salaried_staff' : 'unpaid', // unpaid, paid, confirmed, salaried_staff
         paymentNotes: notes,
-        paymentAccounts: companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)) || [],
+        paymentAccounts: activePaymentAccounts,
         createdBy: user?.username || 'Unknown',
         createdByEmail: user?.name || 'Unknown',
+        repCategory: isRep ? 'sales_rep' : 'sales_agent',
+        pricingTier: isRep ? null : (user?.pricingTier || 'bronze'),
         repPhone: user?.phone || '',
         createdAt: new Date().toISOString(),
         paidAt: ''
@@ -443,24 +487,99 @@ export default function InvoiceGenerator() {
                 <input type='number' min="0" max="100" step="0.1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={vatRate} onChange={(e) => setVatRate(parseFloat(e.target.value) || 0)} />
               </div>
               <div className='col-span-2'>
-                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-2'>Payment Accounts</label>
-                <div className="space-y-2 mb-4">
-                  {companySettings?.paymentAccounts?.map((acc: any) => (
-                    <label key={acc.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-2 border border-gray-100 rounded">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedAccounts.includes(acc.id)}
-                        onChange={() => toggleAccount(acc.id)}
-                        className="rounded text-[#0F5132] focus:ring-[#0F5132]"
-                      />
-                      <span className="font-medium">{acc.bankName}</span>
-                      <span className="text-gray-500">- {acc.accountNumber}</span>
-                    </label>
-                  ))}
-                  {(!companySettings?.paymentAccounts || companySettings.paymentAccounts.length === 0) && (
-                    <p className="text-xs text-gray-500">No payment accounts found in Settings.</p>
-                  )}
-                </div>
+                {isStaticRole && !isAdmin ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className='block text-[11px] font-bold text-gray-700 uppercase'>Payment Accounts (Static Policy)</label>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <Lock className="w-2.5 h-2.5" />
+                        {userRole === 'sales_rep' ? 'Sales Rep Fixed' : 'Sales Agent Fixed'}
+                      </span>
+                    </div>
+
+                    <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-3 space-y-2.5 mb-4">
+                      <p className="text-xs text-emerald-950 font-medium leading-relaxed">
+                        As a {userRole === 'sales_rep' ? 'Sales Representative' : 'Sales Agent'}, payment details are <strong>static and locked</strong> by company policy. The following accounts are automatically added to all your invoices by default:
+                      </p>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {activePaymentAccounts.map((acc: any) => (
+                          <div key={acc.id || acc.accountNumber} className="bg-white p-2.5 rounded border border-emerald-200 shadow-2xs">
+                            <div className="flex items-center justify-between">
+                              <p className="font-bold text-xs text-[#0F5132] flex items-center gap-1">
+                                <Building2 className="w-3.5 h-3.5" />
+                                {acc.bankName}
+                              </p>
+                              <span className="text-[10px] bg-emerald-50 text-emerald-700 font-mono font-bold px-1.5 py-0.5 rounded border border-emerald-200">
+                                {acc.accountNumber.slice(-3) === '419' ? '...419' : acc.accountNumber.slice(-3) === '517' ? '...517' : 'Default'}
+                              </span>
+                            </div>
+                            <p className="text-gray-900 font-mono text-xs font-bold mt-1 tracking-wider">{acc.accountNumber}</p>
+                            <p className="text-gray-500 text-[10px] truncate mt-0.5">{acc.accountName}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="text-[11px] text-emerald-800 flex items-center gap-1.5 pt-1 border-t border-emerald-200/60 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>
+                          {userRole === 'sales_rep'
+                            ? 'Default: Moniepoint (ending in 419) & First Monie.'
+                            : 'Default: Moniepoint (ending in 517) & Stanbic IBTC Bank.'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className='block text-[11px] font-bold text-gray-700 uppercase'>Payment Accounts</label>
+                      <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">Admin Custom</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mb-2.5">
+                      <button
+                        type="button"
+                        onClick={() => loadPresetAccounts('sales_rep')}
+                        className="text-[11px] font-semibold px-2 py-1 bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-800 border border-gray-200 rounded transition-colors"
+                      >
+                        Rep Preset (419 & First Monie)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => loadPresetAccounts('sales_agent')}
+                        className="text-[11px] font-semibold px-2 py-1 bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-800 border border-gray-200 rounded transition-colors"
+                      >
+                        Agent Preset (517 & Stanbic)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAccounts(companySettings?.paymentAccounts?.map((a: any) => a.id) || [])}
+                        className="text-[11px] font-semibold px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 rounded transition-colors"
+                      >
+                        Select All
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      {companySettings?.paymentAccounts?.map((acc: any) => (
+                        <label key={acc.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-2 border border-gray-100 rounded">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedAccounts.includes(acc.id)}
+                            onChange={() => toggleAccount(acc.id)}
+                            className="rounded text-[#0F5132] focus:ring-[#0F5132]"
+                          />
+                          <span className="font-medium">{acc.bankName}</span>
+                          <span className="text-gray-500 font-mono text-xs">- {acc.accountNumber}</span>
+                        </label>
+                      ))}
+                      {(!companySettings?.paymentAccounts || companySettings.paymentAccounts.length === 0) && (
+                        <p className="text-xs text-gray-500">No payment accounts found in Settings.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Additional Notes</label>
                 <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-20' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter any additional notes..." />
@@ -612,18 +731,23 @@ export default function InvoiceGenerator() {
 
             <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
               <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-                {(selectedAccounts.length > 0 || notes) && (
+                {(activePaymentAccounts.length > 0 || notes) && (
                   <>
                     <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
-                    {selectedAccounts.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                        {companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)).map((acc: any) => (
-                          <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
-                            <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
-                            <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
-                            <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
-                          </div>
-                        ))}
+                    {activePaymentAccounts.length > 0 && (
+                      <div className="space-y-2 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {activePaymentAccounts.map((acc: any) => (
+                            <div key={acc.id || acc.accountNumber} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                              <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
+                              <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
+                              <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded text-xs text-amber-900 font-medium leading-relaxed">
+                          ⚠️ <strong>Please only pay to any of the accounts above. Do not pay to any other account aside from these.</strong>
+                        </div>
                       </div>
                     )}
                     {notes && <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>}
@@ -805,18 +929,23 @@ export default function InvoiceGenerator() {
 
             <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
               <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-                {(selectedAccounts.length > 0 || notes) && (
+                {(activePaymentAccounts.length > 0 || notes) && (
                   <>
                     <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
-                    {selectedAccounts.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                        {companySettings?.paymentAccounts?.filter((a: any) => selectedAccounts.includes(a.id)).map((acc: any) => (
-                          <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
-                            <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
-                            <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
-                            <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
-                          </div>
-                        ))}
+                    {activePaymentAccounts.length > 0 && (
+                      <div className="space-y-2 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {activePaymentAccounts.map((acc: any) => (
+                            <div key={acc.id || acc.accountNumber} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                              <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
+                              <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
+                              <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded text-xs text-amber-900 font-medium leading-relaxed">
+                          ⚠️ <strong>Please only pay to any of the accounts above. Do not pay to any other account aside from these.</strong>
+                        </div>
                       </div>
                     )}
                     {notes && <p className='text-sm text-gray-600 whitespace-pre-wrap leading-relaxed'>{notes}</p>}

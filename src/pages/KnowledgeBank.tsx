@@ -568,11 +568,17 @@ export default function KnowledgeBank() {
                     ) : (
                       <>
                         <td className="px-6 py-4">
-                          <div className="font-medium text-[#212529] flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                          <div className="font-medium text-[#212529] flex items-center gap-3">
+                            {product.imageUrl ? (
+                              <img src={product.imageUrl} alt={product.name} className="w-10 h-10 object-cover rounded-md border border-gray-200 shadow-sm shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-200 flex items-center justify-center font-bold text-xs shrink-0">
+                                {product.name?.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
                             <div>
-                               <p>{product.name}</p>
-                               {product.description && <p className="text-gray-500 text-xs mt-1 max-w-sm font-normal">{product.description}</p>}
+                               <p className="font-semibold text-gray-900">{product.name}</p>
+                               {product.description && <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">{product.description}</p>}
                             </div>
                           </div>
                         </td>

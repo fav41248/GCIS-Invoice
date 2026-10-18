@@ -6,6 +6,7 @@ import { handleFirestoreError, OperationType } from '../lib/db';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
+import { getStaticAccountsForRole } from '../lib/paymentAccounts';
 
 export default function InvoiceView() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,13 @@ export default function InvoiceView() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+  const displayAccounts = React.useMemo(() => {
+    if (invoice?.paymentAccounts && invoice.paymentAccounts.length > 0) {
+      return invoice.paymentAccounts;
+    }
+    const role = invoice?.repCategory || invoice?.repRole || (invoice?.profitStatus === 'salaried_staff' ? 'sales_rep' : 'sales_agent');
+    return getStaticAccountsForRole(role, settings?.paymentAccounts);
+  }, [invoice, settings]);
 
   if (loading) return <div className="p-8">Loading invoice...</div>;
   if (!invoice) return <div className="p-8 text-red-500">Invoice not found.</div>;
@@ -160,13 +168,13 @@ export default function InvoiceView() {
 
           <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
             <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-              {(invoice.paymentNotes || (invoice.paymentAccounts && invoice.paymentAccounts.length > 0)) && (
+              {(invoice.paymentNotes || (displayAccounts && displayAccounts.length > 0)) && (
                 <>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
-                  {invoice.paymentAccounts && invoice.paymentAccounts.length > 0 && (
+                  {displayAccounts && displayAccounts.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                      {invoice.paymentAccounts.map((acc: any) => (
-                        <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                      {displayAccounts.map((acc: any) => (
+                        <div key={acc.id || acc.accountNumber} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
                           <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
                           <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
                           <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
@@ -306,13 +314,13 @@ export default function InvoiceView() {
 
           <div className='flex flex-col @2xl:flex-row justify-between items-start pt-6 mt-4 gap-8 @2xl:gap-0'>
             <div className='w-full @2xl:w-1/2 @2xl:pr-8'>
-              {(invoice.paymentNotes || (invoice.paymentAccounts && invoice.paymentAccounts.length > 0)) && (
+              {(invoice.paymentNotes || (displayAccounts && displayAccounts.length > 0)) && (
                 <>
                   <h5 className='text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider'>Payment Info & Notes</h5>
-                  {invoice.paymentAccounts && invoice.paymentAccounts.length > 0 && (
+                  {displayAccounts && displayAccounts.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                      {invoice.paymentAccounts.map((acc: any) => (
-                        <div key={acc.id} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                      {displayAccounts.map((acc: any) => (
+                        <div key={acc.id || acc.accountNumber} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
                           <p className="font-bold text-[#0F5132]">{acc.bankName}</p>
                           <p className="text-gray-600 font-mono mt-0.5">{acc.accountNumber}</p>
                           <p className="text-gray-500 text-xs mt-0.5">{acc.accountName}</p>
