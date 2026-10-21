@@ -25,16 +25,21 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { name: 'Price List', path: '/price-list', icon: Tag }
   ] : [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    ...(!isAuditor ? [{ name: 'New Invoice', path: '/generator', icon: FilePlus }] : []),
+    ...(!isAuditor ? [
+      { name: 'New Invoice', path: '/generator', icon: FilePlus },
+      { name: 'Clients', path: '/clients', icon: Users },
+      { name: 'Price List', path: '/price-list', icon: Tag }
+    ] : []),
     { name: 'Invoices', path: '/invoices', icon: FileText },
-    { name: 'Clients', path: '/clients', icon: Users },
-    { name: 'Price List', path: '/price-list', icon: Tag },
     ...(isAdmin ? [{ name: 'Knowledge Bank', path: '/knowledge', icon: BookOpen }] : []),
-    ...((isAdmin || isAuditor) ? [
-      { name: 'Weekly Audit & Payouts', path: '/audit', icon: ShieldCheck },
+    ...(isAdmin ? [
       { name: 'Sales Team (Reps & Agents)', path: '/users', icon: UserCog }
     ] : []),
+    ...(isAuditor ? [
+      { name: 'Weekly Audit & Payouts', path: '/audit', icon: ShieldCheck }
+    ] : []),
     ...(isAdmin ? [
+      { name: 'Weekly Audit & Payouts', path: '/audit', icon: ShieldCheck },
       { name: 'Settings', path: '/settings', icon: Settings }
     ] : []),
   ];
@@ -128,7 +133,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 };
 
 export default function App() {
-  const { user, loading, login, isStoreKeeper } = useAuth();
+  const { user, loading, login, isStoreKeeper, isAuditor } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -207,18 +212,18 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <Dashboard />} />
-        <Route path="/generator" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <InvoiceGenerator />} />
+        <Route path="/" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : isAuditor ? <Navigate to="/audit" replace /> : <Dashboard />} />
+        <Route path="/generator" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : isAuditor ? <Navigate to="/audit" replace /> : <InvoiceGenerator />} />
         <Route path="/invoices" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <Invoices />} />
-        <Route path="/clients" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <Clients />} />
-        <Route path="/price-list" element={<PriceList />} />
-        <Route path="/knowledge" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <KnowledgeBank />} />
+        <Route path="/clients" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : isAuditor ? <Navigate to="/audit" replace /> : <Clients />} />
+        <Route path="/price-list" element={isAuditor ? <Navigate to="/audit" replace /> : <PriceList />} />
+        <Route path="/knowledge" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : isAuditor ? <Navigate to="/audit" replace /> : <KnowledgeBank />} />
         <Route path="/users" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <UsersPage />} />
         <Route path="/audit" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <WeeklyAudit />} />
-        <Route path="/settings" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : <CompanySettings />} />
+        <Route path="/settings" element={isStoreKeeper ? <Navigate to="/price-list" replace /> : isAuditor ? <Navigate to="/audit" replace /> : <CompanySettings />} />
         <Route path="/receipt/:id" element={<ReceiptView />} />
         <Route path="/invoice/:id" element={<InvoiceView />} />
-        <Route path="*" element={<Navigate to={isStoreKeeper ? "/price-list" : "/"} replace />} />
+        <Route path="*" element={<Navigate to={isStoreKeeper ? "/price-list" : isAuditor ? "/audit" : "/"} replace />} />
       </Routes>
       <Toaster position="bottom-right" />
     </Layout>

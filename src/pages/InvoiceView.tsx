@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/db';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Eye } from 'lucide-react';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
 import { getStaticAccountsForRole } from '../lib/paymentAccounts';
+import { ProofViewerModal } from '../components/ProofViewerModal';
+import { updateDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 export default function InvoiceView() {
   const { id } = useParams<{ id: string }>();
@@ -32,8 +36,33 @@ export default function InvoiceView() {
     fetchData();
   }, [id]);
 
+  const { user, isAdmin, isAuditor } = useAuth();
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showProofModal, setShowProofModal] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  const handleToggleVerified = async () => {
+    if (!isAuditor && !isAdmin) return;
+    try {
+      const newVerified = !invoice.auditorVerified;
+      const auditorName = user?.name || user?.username || 'Auditor';
+      await updateDoc(doc(db, 'invoices', id!), {
+        auditorVerified: newVerified,
+        auditorVerifiedAt: newVerified ? new Date().toISOString() : '',
+        auditorVerifiedBy: newVerified ? auditorName : '',
+        proofLocked: newVerified
+      });
+      setInvoice((prev: any) => ({
+        ...prev,
+        auditorVerified: newVerified,
+        auditorVerifiedBy: newVerified ? auditorName : '',
+        proofLocked: newVerified
+      }));
+      toast.success(newVerified ? `Audit match verified` : `Verification removed`);
+    } catch (err: any) {
+      toast.error('Failed to update verification: ' + (err.message || 'Error'));
+    }
+  };
 
   const displayAccounts = React.useMemo(() => {
     if (invoice?.paymentAccounts && invoice.paymentAccounts.length > 0) {
@@ -45,6 +74,30 @@ export default function InvoiceView() {
 
   if (loading) return <div className="p-8">Loading invoice...</div>;
   if (!invoice) return <div className="p-8 text-red-500">Invoice not found.</div>;
+
+  // Auditor Security Check: Auditor cannot view unpaid invoices or invoices of sales reps
+  if (isAuditor) {
+    const isPaid = (invoice.status || '').toLowerCase() === 'paid';
+    const isSalesRep = invoice.repCategory === 'sales_rep' || invoice.repRole === 'sales_rep' || invoice.profitStatus === 'salaried_staff';
+    if (!isPaid || isSalesRep) {
+      return (
+        <div className="p-8 max-w-lg mx-auto my-12 bg-white rounded-xl border border-red-200 shadow-sm text-center">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3 text-red-600 font-bold text-xl">
+            ✕
+          </div>
+          <h3 className="text-lg font-bold text-gray-900">Access Restricted</h3>
+          <p className="text-sm text-gray-600 mt-2">
+            Auditors only have access to paid invoices belonging to sales agents. You do not have permission to view unpaid invoices or invoices of salaried sales reps.
+          </p>
+          <div className="mt-5">
+            <Link to="/audit" className="inline-block px-5 py-2 bg-[#0F5132] text-white rounded-md text-sm font-bold hover:bg-[#198754]">
+              Return to Weekly Audit
+            </Link>
+          </div>
+        </div>
+      );
+    }
+  }
 
   const formatCurrency = (amount: number) => {
     const symbol = invoice.currency === 'NGN' ? '₦' : invoice.currency === 'USD' ? '$' : invoice.currency === 'EUR' ? '€' : invoice.currency === 'GBP' ? '£' : '';
@@ -62,13 +115,24 @@ export default function InvoiceView() {
 
   return (
     <div className='flex flex-col h-full overflow-hidden'>
-      <div className="p-4 bg-white border-b border-gray-200 flex justify-between items-center print:hidden shrink-0">
+      <div className="p-4 bg-white border-b border-gray-200 flex flex-wrap justify-between items-center print:hidden shrink-0 gap-3">
         <Link to="/invoices" className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors text-sm font-medium">
           <ArrowLeft className="w-4 h-4" /> Back to Invoices
         </Link>
-        <button onClick={handlePrint} className='bg-[#0F5132] text-white px-6 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-[#198754] transition-colors'>
-          <Printer className='h-4 w-4' /> Print / Save PDF
-        </button>
+        <div className="flex items-center gap-3">
+          {invoice.proofOfPayment && (
+            <button 
+              type="button"
+              onClick={() => setShowProofModal(true)} 
+              className='bg-blue-50 text-blue-800 border border-blue-200 px-4 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-blue-100 transition-colors shadow-2xs'
+            >
+              <Eye className='h-4 w-4 text-blue-700' /> View Payment Proof
+            </button>
+          )}
+          <button onClick={handlePrint} className='bg-[#0F5132] text-white px-6 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-[#198754] transition-colors'>
+            <Printer className='h-4 w-4' /> Print / Save PDF
+          </button>
+        </div>
       </div>
 
       <div className='flex-1 overflow-x-auto overflow-y-auto bg-[#F8F9FA] p-4 flex justify-start lg:justify-center print:p-0 print:overflow-visible print:block print:bg-white'>
@@ -118,6 +182,7 @@ export default function InvoiceView() {
               <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
               <p className='font-bold text-base text-[#212529]'>{invoice.clientName || 'Client Name'}</p>
               {invoice.clientAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{invoice.clientAddress}</p>}
+              {invoice.clientPhone && <p className='text-sm text-[#0F5132] font-medium mt-1'>Tel: {invoice.clientPhone}</p>}
             </div>
             <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
               <div className='text-left @2xl:text-right'>
@@ -355,9 +420,25 @@ export default function InvoiceView() {
               </div>
             </div>
           </div>
-
         </div>
       </PrintModal>
+
+      {/* Proof of Payment Viewer Modal */}
+      <ProofViewerModal
+        isOpen={showProofModal}
+        onClose={() => setShowProofModal(false)}
+        invoice={invoice}
+        isAdmin={isAdmin}
+        isAuditor={isAuditor}
+        currentUsername={user?.username}
+        isAudited={Boolean(
+          invoice?.auditStatus === 'cleared' || 
+          invoice?.auditorVerified || 
+          invoice?.isLocked || 
+          invoice?.proofLocked
+        )}
+        onToggleVerified={handleToggleVerified}
+      />
     </div>
   );
 }

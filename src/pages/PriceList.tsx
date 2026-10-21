@@ -7,9 +7,13 @@ import { uploadFileToGoogleDrive, compressFileToDataUrl } from '../lib/drive';
 import { Trash2, Edit2, Search, Download, Tag, ArrowUpDown, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Image as ImageIcon, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportToCSV } from '../lib/utils';
+import { Navigate } from 'react-router-dom';
 
 export default function PriceList() {
   const { user, isAdmin, isAuditor, isSalesRep, isSalesAgent, isStoreKeeper, canViewWholesale, hasPackages } = useAuth();
+  if (isAuditor) {
+    return <Navigate to="/audit" replace />;
+  }
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   

@@ -26,6 +26,7 @@ import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { getWeekInfo, shiftWeek, getRecentWeeksList, isDateInWeek, WeekInfo } from '../lib/dateUtils';
 import { exportToCSV } from '../lib/utils';
+import { ProofViewerModal } from '../components/ProofViewerModal';
 
 export default function WeeklyAudit() {
   const { user, isAdmin, isAuditor } = useAuth();
@@ -93,27 +94,55 @@ export default function WeeklyAudit() {
     return unsubAudits;
   }, [user]);
 
-  // 3. Load sales reps
+  // 3. Load sales reps & agents
   useEffect(() => {
     const fetchUsers = async () => {
       try {
         const snap = await getDocs(collection(db, 'users'));
         const uList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setUsers(uList.filter((u: any) => u.role === 'sales' || !u.role));
+        if (isAuditor) {
+          // Auditor should NOT have access to sales reps (auditor audits Sales Agents only)
+          setUsers(uList.filter((u: any) => u.role !== 'sales_rep' && u.role !== 'admin' && u.role !== 'auditor'));
+        } else {
+          setUsers(uList.filter((u: any) => u.role !== 'admin' && u.role !== 'auditor'));
+        }
       } catch (err) {
         console.error("Error fetching users:", err);
       }
     };
     fetchUsers();
-  }, []);
+  }, [isAuditor]);
+
+  const userMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    users.forEach(u => {
+      if (u.username) map[u.username.toLowerCase()] = u;
+    });
+    return map;
+  }, [users]);
 
   // 1. All invoices in this week regardless of rep filter
   const allWeekInvoices = useMemo(() => {
     return invoices.filter(inv => {
       const invDate = inv.issueDate || (inv.createdAt ? inv.createdAt.slice(0, 10) : '');
-      return isDateInWeek(invDate, selectedWeek);
+      if (!isDateInWeek(invDate, selectedWeek)) return false;
+
+      // Auditor rules:
+      // 1. Should NOT see invoices that are unpaid (only paid invoices)
+      // 2. Should NOT have access to invoices of sales reps (only sales agents)
+      if (isAuditor) {
+        const isPaid = (inv.status || '').toLowerCase() === 'paid';
+        if (!isPaid) return false;
+
+        const creatorKey = (inv.createdBy || '').toLowerCase();
+        const creatorInfo = userMap[creatorKey];
+        const isRep = inv.repCategory === 'sales_rep' || creatorInfo?.role === 'sales_rep' || inv.profitStatus === 'salaried_staff';
+        if (isRep) return false;
+      }
+
+      return true;
     });
-  }, [invoices, selectedWeek]);
+  }, [invoices, selectedWeek, isAuditor, userMap]);
 
   // 2. Invoices filtered for table display (by selected rep & search)
   const weekInvoices = useMemo(() => {
@@ -253,13 +282,35 @@ export default function WeeklyAudit() {
   // Toggle invoice individual verification match by auditor
   const handleToggleInvoiceVerified = async (inv: any) => {
     if (!isAuditor && !isAdmin) return;
+
+    if (isAuditor) {
+      if ((inv.status || '').toLowerCase() !== 'paid') {
+        toast.error("Auditor cannot verify an unpaid invoice. The invoice must be marked as paid.");
+        return;
+      }
+      if (!inv.proofOfPayment || inv.proofOfPayment.trim().length === 0) {
+        toast.error("Auditor cannot verify an invoice without visible proof of payment.");
+        return;
+      }
+    }
+
     try {
       const newVerified = !inv.auditorVerified;
+      const auditorName = user?.name || user?.username || 'Auditor';
       await updateDoc(doc(db, 'invoices', inv.id), {
         auditorVerified: newVerified,
         auditorVerifiedAt: newVerified ? new Date().toISOString() : '',
-        auditorVerifiedBy: newVerified ? (user?.name || user?.username) : ''
+        auditorVerifiedBy: newVerified ? auditorName : '',
+        proofLocked: newVerified
       });
+      if (viewingProof?.id === inv.id) {
+        setViewingProof({ 
+          ...viewingProof, 
+          auditorVerified: newVerified, 
+          auditorVerifiedBy: newVerified ? auditorName : '', 
+          proofLocked: newVerified 
+        });
+      }
       toast.success(newVerified ? `Invoice ${inv.invoiceNumber} verified by Auditor` : `Verification removed`);
     } catch (err: any) {
       toast.error('Failed to update verification: ' + (err.message || 'Error'));
@@ -272,7 +323,20 @@ export default function WeeklyAudit() {
     try {
       const now = new Date().toISOString();
       const by = user?.name || user?.username || 'Auditor';
-      const toUpdate = weekInvoices.filter(i => !i.auditorVerified);
+      const toUpdate = weekInvoices.filter(i => {
+        if (i.auditorVerified) return false;
+        if (isAuditor) {
+          if ((i.status || '').toLowerCase() !== 'paid') return false;
+          if (!i.proofOfPayment || i.proofOfPayment.trim().length === 0) return false;
+        }
+        return true;
+      });
+
+      if (toUpdate.length === 0) {
+        toast.error("No unverified paid invoices with visible payment proof found to verify.");
+        return;
+      }
+
       for (const inv of toUpdate) {
         await updateDoc(doc(db, 'invoices', inv.id), {
           auditorVerified: true,
@@ -280,15 +344,73 @@ export default function WeeklyAudit() {
           auditorVerifiedBy: by
         });
       }
-      toast.success(`All ${toUpdate.length} invoices marked as Match Verified!`);
+      toast.success(`All ${toUpdate.length} qualifying invoices marked as Match Verified!`);
     } catch (err: any) {
       toast.error('Failed to verify all: ' + (err.message || 'Error'));
     }
   };
 
+  // Helper to check whether a rep (or all reps) can be cleared by auditor
+  const getRepClearanceStatus = (repKey: string) => {
+    // Invoices for this rep in the selected week (from full raw invoices list to prevent missing unpaid invoices)
+    const repInvsRaw = invoices.filter(inv => {
+      const invDate = inv.issueDate || (inv.createdAt ? inv.createdAt.slice(0, 10) : '');
+      return isDateInWeek(invDate, selectedWeek) && (inv.createdBy || '').toLowerCase() === repKey.toLowerCase();
+    });
+
+    const unpaidInvoices = repInvsRaw.filter(i => (i.status || '').toLowerCase() !== 'paid');
+    const missingProofInvoices = repInvsRaw.filter(i => !i.proofOfPayment || i.proofOfPayment.trim().length === 0);
+
+    return {
+      totalCount: repInvsRaw.length,
+      unpaidCount: unpaidInvoices.length,
+      missingProofCount: missingProofInvoices.length,
+      canClear: repInvsRaw.length > 0 && unpaidInvoices.length === 0 && missingProofInvoices.length === 0,
+      reason: unpaidInvoices.length > 0
+        ? `${unpaidInvoices.length} invoice(s) are unpaid. All invoices must be paid before clearance.`
+        : missingProofInvoices.length > 0
+        ? `${missingProofInvoices.length} invoice(s) have no visible proof of payment attached.`
+        : repInvsRaw.length === 0
+        ? 'No invoices found for this sales agent in this week.'
+        : ''
+    };
+  };
+
+  const getClearanceEligibility = (target: any) => {
+    if (!isAuditor) return { canClear: true, reason: '' };
+    if (!target) return { canClear: false, reason: 'No sales agent selected.' };
+
+    if (target === 'all') {
+      if (repCommissionBreakdown.length === 0) {
+        return { canClear: false, reason: 'No active sales agents for this week.' };
+      }
+      for (const rep of repCommissionBreakdown) {
+        const status = getRepClearanceStatus(rep.username);
+        if (!status.canClear) {
+          return {
+            canClear: false,
+            reason: `Cannot clear all: ${rep.name} (@${rep.username}) has ${status.reason.toLowerCase()}`
+          };
+        }
+      }
+      return { canClear: true, reason: '' };
+    }
+
+    return getRepClearanceStatus(target.username);
+  };
+
   // Auditor Action: Clear per user or all users in week
   const handleClearAction = async () => {
     if (!isAuditor && !isAdmin) return;
+
+    if (isAuditor) {
+      const eligibility = getClearanceEligibility(selectedRepForAction);
+      if (!eligibility.canClear) {
+        toast.error(`Clearance blocked: ${eligibility.reason}`);
+        return;
+      }
+    }
+
     setIsClearing(true);
     try {
       const now = new Date().toISOString();
@@ -309,10 +431,24 @@ export default function WeeklyAudit() {
         for (const inv of repInvs) {
           await updateDoc(doc(db, 'invoices', inv.id), {
             auditStatus: 'cleared',
+            profitStatus: 'cleared',
             auditClearedAt: now,
             auditClearedBy: by,
-            auditWeekKey: selectedWeek.weekKey
+            auditWeekKey: selectedWeek.weekKey,
+            auditorVerified: true,
+            isLocked: true,
+            proofLocked: true
           });
+        }
+
+        try {
+          await updateDoc(doc(db, 'users', repKey), {
+            lastAuditedAt: now,
+            lastAuditedBy: by,
+            lastAuditedWeek: selectedWeek.weekKey
+          });
+        } catch {
+          // Silently proceed if user doc key differs
         }
 
         const existingRepAudit = updatedRepsMap[repKey] || {};
@@ -630,25 +766,7 @@ export default function WeeklyAudit() {
             Download Audit Report
           </button>
 
-          {/* Auditor Batch Clear Button */}
-          {(isAuditor || isAdmin) && (
-            <button
-              onClick={() => {
-                setSelectedRepForAction('all');
-                setAuditorNote(currentAudit?.auditorNote || '');
-                setShowClearModal(true);
-              }}
-              disabled={repCommissionBreakdown.length === 0}
-              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50 ${
-                isFullyCleared 
-                  ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                  : 'bg-[#0F5132] text-white hover:bg-[#198754] ring-2 ring-[#0F5132]/20'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              {isFullyCleared ? 'Update All Clearance' : `Clear All Reps (${totalRepsCount})`}
-            </button>
-          )}
+
 
           {/* Admin Batch Payout Button */}
           {isAdmin && clearedRepsCount > 0 && (
@@ -804,6 +922,19 @@ export default function WeeklyAudit() {
                       }`}>
                         {rep.verifiedCount} of {rep.count} Verified
                       </span>
+                      {(() => {
+                        if (!isAuditor) return null;
+                        const repIssues = getRepClearanceStatus(rep.username);
+                        if (!repIssues.canClear) {
+                          return (
+                            <span className="px-2 py-0.5 rounded font-bold border bg-red-50 text-red-700 border-red-200 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3 text-red-500" />
+                              {repIssues.missingProofCount > 0 ? `${repIssues.missingProofCount} Missing Proof` : `${repIssues.unpaidCount} Unpaid`}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
 
                     {/* Clearance & Payout Badges */}
@@ -874,24 +1005,34 @@ export default function WeeklyAudit() {
 
                     <div className="flex items-center gap-1.5 ml-auto">
                       {/* Auditor Button for this user */}
-                      {(isAuditor || isAdmin) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedRepForAction(rep);
-                            setAuditorNote(rep.auditorNote || '');
-                            setShowClearModal(true);
-                          }}
-                          className={`text-xs font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shadow-2xs transition-all ${
-                            rep.isCleared 
-                              ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                              : 'bg-[#0F5132] text-white hover:bg-[#198754] active:scale-95'
-                          }`}
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          {rep.isCleared ? 'Edit Note' : rep.isSalesRep ? 'Clear Proofs' : 'Clear Agent'}
-                        </button>
-                      )}
+                      {(isAuditor || isAdmin) && (() => {
+                        const repIssues = isAuditor ? getRepClearanceStatus(rep.username) : { canClear: true, missingProofCount: 0, unpaidCount: 0, totalCount: 0, reason: '' };
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedRepForAction(rep);
+                              setAuditorNote(rep.auditorNote || '');
+                              setShowClearModal(true);
+                            }}
+                            className={`text-xs font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shadow-2xs transition-all ${
+                              rep.isCleared 
+                                ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                : !repIssues.canClear
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                                : 'bg-[#0F5132] text-white hover:bg-[#198754] active:scale-95'
+                            }`}
+                            title={!repIssues.canClear ? repIssues.reason : undefined}
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {rep.isCleared 
+                              ? 'Edit Note' 
+                              : !repIssues.canClear
+                              ? 'Inspect to Clear'
+                              : rep.isSalesRep ? 'Clear Proofs' : 'Clear Agent'}
+                          </button>
+                        );
+                      })()}
 
                       {/* Admin Payout Button for this user */}
                       {isAdmin && rep.isCleared && (
@@ -1049,21 +1190,33 @@ export default function WeeklyAudit() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {(isAuditor || isAdmin) ? (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleInvoiceVerified(inv)}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold transition-all shadow-xs ${
-                              isVerified 
-                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300'
-                            }`}
-                            title="Click to toggle auditor proof verification match"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            {isVerified ? 'Match Verified' : 'Verify Match'}
-                          </button>
-                        ) : (
+                        {(isAuditor || isAdmin) ? (() => {
+                          const cannotVerify = isAuditor && (!hasProof || (inv.status || '').toLowerCase() !== 'paid');
+                          return (
+                            <button
+                              type="button"
+                              disabled={cannotVerify}
+                              onClick={() => handleToggleInvoiceVerified(inv)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold transition-all shadow-xs ${
+                                cannotVerify
+                                  ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
+                                  : isVerified 
+                                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300'
+                              }`}
+                              title={
+                                cannotVerify 
+                                  ? !hasProof 
+                                    ? "Proof of payment must be attached before auditor can verify" 
+                                    : "Invoice must be marked as paid before auditor can verify"
+                                  : "Click to toggle auditor proof verification match"
+                              }
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              {isVerified ? 'Match Verified' : 'Verify Match'}
+                            </button>
+                          );
+                        })() : (
                           <span className={`text-xs font-bold ${isVerified ? 'text-emerald-700' : 'text-gray-400'}`}>
                             {isVerified ? '✓ Verified' : 'Pending'}
                           </span>
@@ -1264,6 +1417,28 @@ export default function WeeklyAudit() {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Clearance Eligibility Block for Auditor */}
+              {(() => {
+                const eligibility = getClearanceEligibility(selectedRepForAction);
+                if (isAuditor && !eligibility.canClear) {
+                  return (
+                    <div className="p-4 bg-red-50 border border-red-300 rounded-lg text-xs space-y-1.5">
+                      <div className="flex items-center gap-2 font-bold text-red-800 text-sm">
+                        <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                        <span>Clearance Blocked</span>
+                      </div>
+                      <p className="text-red-700 font-medium">
+                        {eligibility.reason}
+                      </p>
+                      <p className="text-red-600 text-[11px] pt-1 border-t border-red-200">
+                        <strong>Auditor Policy:</strong> Auditors cannot clear unpaid invoices or invoices that do not have visible proof of payment attached. All invoices must be paid with visible proofs before clearance.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900">
                   {selectedRepForAction === 'all' ? 'Weekly Audit Summary (All Reps)' : `Audit Summary for ${selectedRepForAction?.name}`}
@@ -1315,19 +1490,29 @@ export default function WeeklyAudit() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                disabled={isClearing}
-                onClick={handleClearAction}
-                className="px-5 py-2 bg-[#0F5132] text-white rounded-md text-sm font-bold hover:bg-[#198754] transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                {isClearing 
-                  ? 'Clearing...' 
-                  : selectedRepForAction === 'all' 
-                  ? 'Confirm & Clear All Reps' 
-                  : `Confirm & Clear ${selectedRepForAction?.name || selectedRepForAction?.username}`}
-              </button>
+              {(() => {
+                const eligibility = getClearanceEligibility(selectedRepForAction);
+                const isBlocked = isAuditor && !eligibility.canClear;
+
+                return (
+                  <button
+                    type="button"
+                    disabled={isClearing || isBlocked}
+                    onClick={handleClearAction}
+                    className="px-5 py-2 bg-[#0F5132] text-white rounded-md text-sm font-bold hover:bg-[#198754] transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                    title={isBlocked ? eligibility.reason : undefined}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    {isClearing 
+                      ? 'Clearing...' 
+                      : isBlocked
+                      ? 'Clearance Blocked (Requirements Not Met)'
+                      : selectedRepForAction === 'all' 
+                      ? 'Confirm & Clear All Reps' 
+                      : `Confirm & Clear ${selectedRepForAction?.name || selectedRepForAction?.username}`}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1439,84 +1624,23 @@ export default function WeeklyAudit() {
       )}
 
       {/* Proof of Payment Viewer Modal */}
-      {viewingProof && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 space-y-4">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">
-                  Proof of Payment — Invoice #{viewingProof.invoiceNumber}
-                </h3>
-                <p className="text-xs text-gray-500">Client: {viewingProof.clientName} • Amount: ₦{Number(viewingProof.grandTotal || 0).toLocaleString()}</p>
-              </div>
-              <button onClick={() => setViewingProof(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex flex-col items-center justify-center py-4 bg-gray-50 rounded-lg">
-              {viewingProof.proofOfPayment?.startsWith('data:image') ? (
-                <img 
-                  src={viewingProof.proofOfPayment} 
-                  alt="Proof of Payment" 
-                  className="max-w-full max-h-[60vh] object-contain rounded-md border shadow-sm bg-white p-1" 
-                />
-              ) : viewingProof.proofOfPayment?.startsWith('http') ? (
-                <div className="text-center space-y-4 py-8">
-                  <p className="text-sm text-gray-600 font-medium">Stored securely on Google Drive.</p>
-                  <a 
-                    href={viewingProof.proofOfPayment} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-[#0F5132] text-white px-5 py-2.5 rounded-md text-sm font-bold hover:bg-[#198754] transition-colors"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open Proof in Google Drive
-                  </a>
-                </div>
-              ) : (
-                <div className="p-6 text-center text-gray-500">
-                  <p className="font-bold">No receipt image attached.</p>
-                </div>
-              )}
-            </div>
-
-            {viewingProof.proofNote && (
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-xs text-gray-700">
-                <span className="font-bold">Sales Rep Note:</span> {viewingProof.proofNote}
-              </div>
-            )}
-
-            <div className="flex justify-between items-center pt-2">
-              {(isAuditor || isAdmin) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleToggleInvoiceVerified(viewingProof);
-                    setViewingProof({ ...viewingProof, auditorVerified: !viewingProof.auditorVerified });
-                  }}
-                  className={`px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 ${
-                    viewingProof.auditorVerified 
-                      ? 'bg-emerald-600 text-white' 
-                      : 'bg-gray-100 text-gray-700 border hover:bg-gray-200'
-                  }`}
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  {viewingProof.auditorVerified ? 'Verified by Auditor' : 'Mark as Match Verified'}
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setViewingProof(null)}
-                className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-xs font-bold transition-colors ml-auto"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProofViewerModal
+        isOpen={Boolean(viewingProof)}
+        onClose={() => setViewingProof(null)}
+        invoice={viewingProof}
+        isAdmin={isAdmin}
+        isAuditor={isAuditor}
+        currentUsername={user?.username}
+        isAudited={Boolean(
+          viewingProof?.auditStatus === 'cleared' || 
+          viewingProof?.auditorVerified || 
+          viewingProof?.isLocked || 
+          viewingProof?.proofLocked ||
+          currentAudit?.status === 'cleared' || 
+          currentAudit?.reps?.[viewingProof?.createdBy]?.status === 'cleared'
+        )}
+        onToggleVerified={handleToggleInvoiceVerified}
+      />
     </div>
   );
 }

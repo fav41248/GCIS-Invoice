@@ -1,15 +1,20 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc, where } from 'firebase/firestore';
+import { Link, Navigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
-import { Trash2, Edit2, Search, Download, Users, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { Trash2, Edit2, Search, Download, Users, ChevronLeft, ChevronRight, ArrowUpDown, FilePlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportToCSV } from '../lib/utils';
 
 export default function Clients() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isAuditor } = useAuth();
+  if (isAuditor) {
+    return <Navigate to="/audit" replace />;
+  }
   const [clients, setClients] = useState<any[]>([]);
+  const [userMap, setUserMap] = useState<Record<string, { name: string; role: string }>>({});
   const [loading, setLoading] = useState(true);
   
   const [isEditing, setIsEditing] = useState(false);
@@ -24,6 +29,23 @@ export default function Clients() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Load user directory for admin to show Creator name & role
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsub = onSnapshot(collection(db, 'users'), (snap) => {
+      const map: Record<string, { name: string; role: string }> = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        map[d.id.toLowerCase()] = {
+          name: data.name || d.id,
+          role: data.role || 'sales_agent'
+        };
+      });
+      setUserMap(map);
+    });
+    return unsub;
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!user) return;
@@ -57,6 +79,9 @@ export default function Clients() {
       
       if (!editId) {
         payload.createdBy = user?.username;
+        payload.createdByRole = user?.role || 'sales_agent';
+        payload.createdByName = user?.name || user?.username;
+        payload.createdAt = new Date().toISOString();
       }
 
       await setDoc(doc(db, 'clients', id), payload, { merge: true });
@@ -266,13 +291,47 @@ export default function Clients() {
                       </td>
                       {isAdmin && (
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                            {c.createdBy || '-'}
-                          </span>
+                          {(() => {
+                            const creator = c.createdBy ? userMap[c.createdBy.toLowerCase()] : null;
+                            const creatorName = creator?.name || c.createdByName || c.createdBy || '-';
+                            const creatorRole = creator?.role || c.createdByRole || '';
+                            const roleLabel = creatorRole === 'sales_rep' ? 'Sales Rep' : creatorRole === 'sales_agent' || creatorRole === 'sales' ? 'Sales Agent' : creatorRole === 'admin' ? 'Admin' : creatorRole;
+                            return (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="font-semibold text-gray-900 text-xs">
+                                  {creatorName}
+                                </span>
+                                {c.createdBy && (
+                                  <span className="text-[11px] text-gray-500 font-mono">
+                                    @{c.createdBy}
+                                  </span>
+                                )}
+                                {roleLabel && (
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                    creatorRole === 'sales_rep' ? 'bg-emerald-100 text-emerald-800' :
+                                    creatorRole === 'sales_agent' || creatorRole === 'sales' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-purple-100 text-purple-800'
+                                  }`}>
+                                    {roleLabel}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                       )}
                       <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end items-center gap-1.5">
+                          {!isAuditor && (
+                            <Link
+                              to={`/generator?clientId=${c.id}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#0F5132] hover:bg-[#198754] text-white text-xs font-bold rounded shadow-xs transition-colors whitespace-nowrap"
+                              title="Create Invoice for this Client"
+                            >
+                              <FilePlus className="w-3.5 h-3.5" />
+                              <span>Invoice</span>
+                            </Link>
+                          )}
                           <button 
                             onClick={() => handleEdit(c)}
                             className="p-1.5 text-gray-500 hover:text-[#0F5132] hover:bg-green-50 rounded transition-colors"
@@ -295,7 +354,7 @@ export default function Clients() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center">
+                    <td colSpan={isAdmin ? 4 : 3} className="px-6 py-12 text-center">
                        <div className="flex flex-col items-center justify-center text-gray-500">
                          <Users className="w-12 h-12 text-gray-300 mb-3" />
                          <p className="text-lg font-medium text-gray-900 mb-1">{searchTerm ? "No matching clients found" : "No clients added yet"}</p>

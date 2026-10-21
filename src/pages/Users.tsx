@@ -6,9 +6,10 @@ import { handleFirestoreError, OperationType } from '../lib/db';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Edit2, Save, X, FileText, Calendar, ExternalLink, ShieldCheck, RotateCcw } from 'lucide-react';
+import { ProofViewerModal } from '../components/ProofViewerModal';
 
 export default function Users() {
-  const { isAdmin, isAuditor } = useAuth();
+  const { user, isAdmin, isAuditor } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -17,16 +18,18 @@ export default function Users() {
   const [resettingSessions, setResettingSessions] = useState<string | null>(null);
 
   const handleResetSessions = async (targetUsername: string, targetName: string) => {
-    if (!window.confirm(`Reset all active device sessions for "${targetName}" (@${targetUsername})? This will allow them to log in on new devices immediately.`)) {
+    if (!window.confirm(`Reset all active device sessions for "${targetName}" (@${targetUsername})? This will log them out from all currently active devices and allow them to log in on new devices immediately.`)) {
       return;
     }
     setResettingSessions(targetUsername);
     try {
       const snap = await getDocs(collection(db, 'users', targetUsername, 'sessions'));
+      const count = snap.docs.length;
       for (const d of snap.docs) {
         await deleteDoc(d.ref);
       }
-      toast.success(`Active sessions for @${targetUsername} have been reset successfully!`);
+      toast.success(`Success! Reset ${count} active device session(s) for @${targetUsername}. They can now sign in on a new device.`);
+      window.alert(`Device Reset Successful!\n\nSuccessfully cleared ${count} active session(s) for ${targetName} (@${targetUsername}). The user is now unbound from previous devices.`);
     } catch (err: any) {
       toast.error('Failed to reset sessions: ' + (err.message || 'Error'));
     } finally {
@@ -121,7 +124,11 @@ export default function Users() {
     try {
       const q = query(collection(db, 'invoices'), where('createdBy', '==', user.username));
       const querySnapshot = await getDocs(q);
-      const invoicesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let invoicesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (isAuditor) {
+        // Auditor should not see invoices that are unpaid, only the invoice that has been marked as paid
+        invoicesData = invoicesData.filter((inv: any) => (inv.status || '').toLowerCase() === 'paid');
+      }
       invoicesData.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setUserInvoices(invoicesData);
     } catch (error) {
@@ -137,9 +144,9 @@ export default function Users() {
     const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let data: any[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Filter out admins for auditors, showing sales team and other auditors
+      // Filter out admins and sales reps for auditors
       if (isAuditor && !isAdmin) {
-        data = data.filter(u => u.role !== 'admin');
+        data = data.filter(u => u.role !== 'admin' && u.role !== 'sales_rep');
       }
       data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setUsers(data);
@@ -578,6 +585,7 @@ export default function Users() {
                           <th className="px-4 py-3 font-bold text-gray-600 text-right">Sale Amount</th>
                           <th className="px-4 py-3 font-bold text-gray-600 text-right">Profit</th>
                           <th className="px-4 py-3 font-bold text-gray-600">Payment Status</th>
+                          <th className="px-4 py-3 font-bold text-gray-600">Audit & Payout</th>
                           <th className="px-4 py-3 font-bold text-gray-600 text-center">Proof of Payment</th>
                         </tr>
                       </thead>
@@ -655,44 +663,20 @@ export default function Users() {
       )}
 
       {/* Proof of Payment Viewer Modal */}
-      {viewingProof && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 space-y-4">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-900">
-                Proof of Payment — Invoice #{viewingProof.invoiceNumber}
-              </h3>
-              <button onClick={() => setViewingProof(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex flex-col items-center justify-center py-4">
-              {viewingProof.proofOfPayment?.startsWith('data:image') ? (
-                <img src={viewingProof.proofOfPayment} alt="Proof of Payment" className="max-w-full max-h-[60vh] object-contain rounded-md border shadow-sm" />
-              ) : viewingProof.proofOfPayment?.startsWith('http') ? (
-                <div className="text-center space-y-4 py-8">
-                  <p className="text-sm text-gray-600 font-medium">Proof stored in Google Drive storage.</p>
-                  <a 
-                    href={viewingProof.proofOfPayment} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
-                  >
-                    <ExternalLink className="w-4 h-4" /> Open Proof in Google Drive
-                  </a>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">Proof file attached.</p>
-              )}
-            </div>
-            <div className="flex justify-end pt-2 border-t">
-              <button onClick={() => setViewingProof(null)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-md font-bold text-sm">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProofViewerModal
+        isOpen={Boolean(viewingProof)}
+        onClose={() => setViewingProof(null)}
+        invoice={viewingProof}
+        isAdmin={isAdmin}
+        isAuditor={isAuditor}
+        currentUsername={user?.username}
+        isAudited={Boolean(
+          viewingProof?.auditStatus === 'cleared' || 
+          viewingProof?.auditorVerified || 
+          viewingProof?.isLocked || 
+          viewingProof?.proofLocked
+        )}
+      />
     </div>
   );
 }

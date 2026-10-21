@@ -58,6 +58,21 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 3500,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) return 'firebase';
+              if (id.includes('jspdf') || id.includes('html2') || id.includes('purify')) return 'pdf-vendor';
+              if (id.includes('recharts')) return 'charts';
+              return 'vendor';
+            }
+          }
+        }
+      }
+    },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},

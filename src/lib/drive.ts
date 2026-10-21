@@ -94,10 +94,17 @@ export const getDriveAccessToken = async (): Promise<string | null> => {
  */
 export const compressFileToDataUrl = (file: File, maxDim = 1200, quality = 0.75): Promise<string> => {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
+    const isPdfFile = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!file.type.startsWith('image/') || isPdfFile) {
       // Fallback for PDF or other documents
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
+      reader.onload = () => {
+        let res = reader.result as string;
+        if (isPdfFile && !res.startsWith('data:application/pdf')) {
+          res = res.replace(/^data:[^;]*;/, 'data:application/pdf;');
+        }
+        resolve(res);
+      };
       reader.onerror = reject;
       reader.readAsDataURL(file);
       return;
@@ -161,35 +168,58 @@ export const uploadFileToGoogleDrive = async (
 
   const metadata = {
     name: `GCIS_${Date.now()}_${file.name}`,
-    mimeType: file.type || 'application/octet-stream',
+    mimeType: file.type || 'application/pdf',
   };
 
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', file);
-
-  const response = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name,thumbnailLink',
+  // 1. Initiate resumable session
+  const initRes = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': file.type || 'application/pdf',
+        'X-Upload-Content-Length': file.size.toString(),
       },
-      body: form,
+      body: JSON.stringify(metadata),
     }
   );
 
-  if (!response.ok) {
-    cachedAccessToken = null;
-    let detail = response.statusText;
+  if (!initRes.ok) {
+    let detail = initRes.statusText;
     try {
-      const errJson = await response.json();
+      const errJson = await initRes.json();
       detail = errJson?.error?.message || detail;
     } catch {}
-    throw new Error(`Google Drive upload failed (${response.status}): ${detail}`);
+    throw new Error(`Google Drive upload init failed (${initRes.status}): ${detail}`);
   }
 
-  const data = await response.json();
+  const uploadUrl = initRes.headers.get('Location');
+  if (!uploadUrl) {
+    throw new Error('Failed to obtain Google Drive resumable upload session URI.');
+  }
+
+  // 2. Upload file in chunks or direct PUT if session established
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Length': file.size.toString(),
+      'Content-Type': file.type || 'application/pdf',
+    },
+    body: file,
+  });
+
+  if (!uploadRes.ok) {
+    let detail = uploadRes.statusText;
+    try {
+      const errJson = await uploadRes.json();
+      detail = errJson?.error?.message || detail;
+    } catch {}
+    throw new Error(`Google Drive chunked upload failed (${uploadRes.status}): ${detail}`);
+  }
+
+  const data = await uploadRes.json();
   return {
     fileId: data.id,
     webViewLink: data.webViewLink,

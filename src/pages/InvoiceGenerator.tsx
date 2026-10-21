@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CheckCircle2, Printer, Save, AlertCircle, Lock, Building2 } from 'lucide-react';
-import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc, setDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { OperationType, handleFirestoreError } from '../lib/db';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
 import { getStaticAccountsForRole, STATIC_ACCOUNTS_PRESETS, PaymentAccount } from '../lib/paymentAccounts';
@@ -25,6 +25,7 @@ export default function InvoiceGenerator() {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [billTo, setBillTo] = useState('');
   const [billToAddress, setBillToAddress] = useState('');
+  const [billToPhone, setBillToPhone] = useState('');
   
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${new Date().getFullYear()}-0001`);
 
@@ -78,25 +79,6 @@ export default function InvoiceGenerator() {
   const [itemOverrides, setItemOverrides] = useState<Record<string, {description?: string, qty?: number, price?: number}>>({});
   const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
 
-  const [proofOfPaymentUrl, setProofOfPaymentUrl] = useState('');
-  const [uploadingProof, setUploadingProof] = useState(false);
-
-  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingProof(true);
-    try {
-      // Compress and convert to data URL (or upload to Drive if connected)
-      const dataUrl = await compressFileToDataUrl(file);
-      setProofOfPaymentUrl(dataUrl);
-      toast.success('Proof of payment attached successfully!');
-    } catch (err: any) {
-      toast.error('Failed to attach proof: ' + (err.message || 'Error'));
-    } finally {
-      setUploadingProof(false);
-    }
-  };
-
   const userRole = isSalesRep || user?.role === 'sales_rep' 
     ? 'sales_rep' 
     : (isSalesAgent || user?.role === 'sales_agent' || user?.role === 'sales') 
@@ -125,13 +107,35 @@ export default function InvoiceGenerator() {
     toast.success(`Loaded ${targetRole === 'sales_rep' ? 'Sales Rep' : 'Sales Agent'} defaults`);
   };
 
+  const location = useLocation();
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const clientSnap = await getDocs(collection(db, 'clients'));
+        if (!user) return;
+        const clientsRef = collection(db, 'clients');
+        const clientQuery = isAdmin 
+          ? query(clientsRef) 
+          : query(clientsRef, where('createdBy', '==', user.username));
+        const clientSnap = await getDocs(clientQuery);
         const productSnap = await getDocs(collection(db, 'products'));
         setProducts(productSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
-        setClients(clientSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        
+        const fetchedClients: any[] = clientSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setClients(fetchedClients);
+
+        // Pre-select client if passed via URL (e.g. /generator?clientId=...)
+        const searchParams = new URLSearchParams(location.search);
+        const preselectedClientId = searchParams.get('clientId');
+        if (preselectedClientId) {
+          const matched = fetchedClients.find((c: any) => c.id === preselectedClientId);
+          if (matched) {
+            setSelectedClientId(matched.id);
+            setBillTo(matched.name || '');
+            setBillToAddress(matched.address || '');
+            setBillToPhone(matched.phone || '');
+          }
+        }
         
         const settingsSnap = await getDoc(doc(db, 'settings', 'company'));
         if (settingsSnap.exists()) {
@@ -149,7 +153,7 @@ export default function InvoiceGenerator() {
       }
     };
     fetchData();
-  }, [userRole]);
+  }, [userRole, user, isAdmin, location.search]);
 
   const handleClientChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
@@ -157,16 +161,13 @@ export default function InvoiceGenerator() {
     if (id === 'custom') {
       setBillTo('');
       setBillToAddress('');
+      setBillToPhone('');
     } else {
       const client = clients.find(c => c.id === id);
       if (client) {
-        setBillTo(client.name);
-        const addr = client.address || '';
-        const phone = client.phone || '';
-        if (addr && phone) setBillToAddress(addr + ' - ' + phone);
-        else if (addr) setBillToAddress(addr);
-        else if (phone) setBillToAddress(phone);
-        else setBillToAddress('');
+        setBillTo(client.name || '');
+        setBillToAddress(client.address || '');
+        setBillToPhone(client.phone || '');
       }
     }
   };
@@ -344,11 +345,54 @@ export default function InvoiceGenerator() {
       const wholesaleTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
       const profitTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.profit || 0), 0);
 
+      // Ensure client is automatically added to this sales agent/rep's client list
+      let finalClientId = selectedClientId;
+      const trimmedClientName = billTo.trim();
+
+      try {
+        const clientQuery = query(
+          collection(db, 'clients'),
+          where('createdBy', '==', user.username)
+        );
+        const existingClientsSnap = await getDocs(clientQuery);
+        const existingClientMatch = existingClientsSnap.docs.find(d => 
+          (d.data().name || '').trim().toLowerCase() === trimmedClientName.toLowerCase()
+        );
+
+        if (existingClientMatch) {
+          finalClientId = existingClientMatch.id;
+          // Update client phone or address if newly provided
+          if (billToPhone.trim() || billToAddress.trim()) {
+            await setDoc(doc(db, 'clients', finalClientId), {
+              ...(billToPhone.trim() ? { phone: billToPhone.trim() } : {}),
+              ...(billToAddress.trim() ? { address: billToAddress.trim() } : {}),
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        } else {
+          // Auto-create new client for this sales agent / rep
+          finalClientId = `client_${Date.now()}`;
+          await setDoc(doc(db, 'clients', finalClientId), {
+            name: trimmedClientName,
+            address: billToAddress.trim() || '',
+            phone: billToPhone.trim() || '',
+            email: '',
+            createdBy: user.username,
+            createdByRole: isRep ? 'sales_rep' : user.role === 'admin' ? 'admin' : 'sales_agent',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+      } catch (clientErr) {
+        console.warn("Could not auto-register client:", clientErr);
+      }
+
       const invoiceData = {
         invoiceNumber,
-        clientId: selectedClientId || 'unknown',
+        clientId: finalClientId || 'unknown',
         clientName: billTo.trim(),
-        clientAddress: billToAddress,
+        clientAddress: billToAddress.trim(),
+        clientPhone: billToPhone.trim(),
         items: itemsWithWholesale,
         subtotal,
         vatRate,
@@ -368,7 +412,7 @@ export default function InvoiceGenerator() {
         repCategory: isRep ? 'sales_rep' : 'sales_agent',
         pricingTier: isRep ? null : (user?.pricingTier || 'bronze'),
         repPhone: user?.phone || '',
-        proofOfPayment: proofOfPaymentUrl || '',
+        proofOfPayment: '',
         createdAt: new Date().toISOString(),
         paidAt: ''
       };
@@ -528,8 +572,12 @@ export default function InvoiceGenerator() {
                 <input type='text' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={billTo} onChange={(e) => setBillTo(e.target.value)} />
               </div>
               <div className='col-span-2'>
-                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Bill To (Address)</label>
-                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-16' value={billToAddress} onChange={(e) => setBillToAddress(e.target.value)} />
+                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Ship to (Address)</label>
+                <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-16' value={billToAddress} onChange={(e) => setBillToAddress(e.target.value)} placeholder="Client shipping or delivery address..." />
+              </div>
+              <div className='col-span-2'>
+                <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Client Phone Number</label>
+                <input type='tel' className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={billToPhone} onChange={(e) => setBillToPhone(e.target.value)} placeholder="e.g. 08012345678" />
               </div>
               <div>
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Invoice #</label>
@@ -651,33 +699,6 @@ export default function InvoiceGenerator() {
                   </div>
                 )}
 
-                <div className="mb-4">
-                  <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Proof of Payment (Optional)</label>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="file" 
-                      accept="image/*,application/pdf"
-                      capture="environment"
-                      onChange={handleProofUpload}
-                      disabled={uploadingProof}
-                      className="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer border border-gray-200 rounded-md p-1 bg-white" 
-                    />
-                  </div>
-                  {uploadingProof && <p className="text-xs text-blue-600 mt-1">Processing proof of payment...</p>}
-                  {proofOfPaymentUrl && (
-                    <div className="mt-2 flex items-center justify-between bg-emerald-50 border border-emerald-200 p-2 rounded-md">
-                      <span className="text-xs text-emerald-800 font-semibold truncate max-w-[200px]">✓ Proof attached successfully</span>
-                      <button 
-                        type="button" 
-                        onClick={() => setProofOfPaymentUrl('')}
-                        className="text-xs text-red-600 hover:text-red-800 font-bold px-2 py-0.5"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )}
-                </div>
-
                 <label className='block text-[11px] font-bold text-gray-600 uppercase mb-1'>Additional Notes</label>
                 <textarea className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] resize-none h-20' value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Enter any additional notes..." />
               </div>
@@ -739,9 +760,10 @@ export default function InvoiceGenerator() {
             
             <div className='grid grid-cols-2 gap-8 mb-10'>
               <div className='p-5 bg-[#F8F9FA] rounded-md border-l-4 border-[#0F5132] print:border-[#0F5132] print:bg-gray-50'>
-                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
+                <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Shipped To:</h5>
                 <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
                 {billToAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress}</p>}
+                {billToPhone && <p className='text-sm text-[#0F5132] font-medium mt-1'>Tel: {billToPhone}</p>}
               </div>
               <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
                 <div className='text-left @2xl:text-right'>
@@ -975,6 +997,7 @@ export default function InvoiceGenerator() {
                 <h5 className='text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider'>Billed To:</h5>
                 <p className='font-bold text-base text-[#212529]'>{billTo || 'Client Name'}</p>
                 {billToAddress && <p className='text-sm text-gray-600 whitespace-pre-wrap mt-1'>{billToAddress}</p>}
+                {billToPhone && <p className='text-sm text-[#0F5132] font-medium mt-1'>Tel: {billToPhone}</p>}
               </div>
               <div className='flex justify-start @2xl:justify-end gap-6 @2xl:gap-12 items-center w-full @2xl:w-auto'>
                 <div className='text-left @2xl:text-right'>
