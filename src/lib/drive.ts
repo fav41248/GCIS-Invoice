@@ -92,7 +92,7 @@ export const getDriveAccessToken = async (): Promise<string | null> => {
  * Compresses an image file into a compact WebP/JPEG data URL (< 150KB)
  * for instant, permanent, offline-capable storage directly in Firestore.
  */
-export const compressFileToDataUrl = (file: File, maxDim = 1200, quality = 0.75): Promise<string> => {
+export const compressFileToDataUrl = (file: File, maxDim = 600, quality = 0.6): Promise<string> => {
   return new Promise((resolve, reject) => {
     const isPdfFile = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if (!file.type.startsWith('image/') || isPdfFile) {

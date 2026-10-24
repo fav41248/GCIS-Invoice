@@ -49,16 +49,39 @@ export default function PriceList() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'products'), orderBy('name', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setItems(data);
-      setLoading(false);
-    }, (error) => {
-      if (!handleFirestoreError(error, OperationType.LIST, 'products')) toast.error('Failed to load price list.');
-      setLoading(false);
-    });
-    return unsubscribe;
+    
+    // 1. Load from localStorage cache immediately if available
+    const cachedProducts = localStorage.getItem('gcis_cached_products');
+    if (cachedProducts) {
+      try {
+        const parsed = JSON.parse(cachedProducts);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setItems(parsed);
+          setLoading(false);
+        }
+      } catch {}
+    }
+
+    // 2. Fetch fresh list once (using getDocs instead of live onSnapshot to save quota)
+    const fetchProductsOnce = async () => {
+      try {
+        const q = query(collection(db, 'products'), orderBy('name', 'asc'));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (data.length > 0) {
+          setItems(data);
+          localStorage.setItem('gcis_cached_products', JSON.stringify(data));
+        }
+      } catch (error) {
+        if (!handleFirestoreError(error, OperationType.LIST, 'products')) {
+          console.warn('Using cached products due to quota limit.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProductsOnce();
   }, [user]);
 
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

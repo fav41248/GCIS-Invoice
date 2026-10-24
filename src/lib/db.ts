@@ -14,9 +14,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   const errorMessage = error instanceof Error ? error.message : String(error);
   
   // Ignore benign errors during Vite HMR, tab visibility changes, or transient network offline states
-  const benignErrors = ['Database is closing', 'hidden', 'unavailable', 'Could not reach', 'client is offline', 'offline'];
+  const benignErrors = ['Database is closing', 'hidden', 'unavailable', 'Could not reach', 'client is offline', 'offline', 'quota limit exceeded', 'resource-exhausted'];
   if (benignErrors.some(msg => errorMessage.toLowerCase().includes(msg.toLowerCase()))) {
-    console.warn('Ignored benign/transient Firestore error:', errorMessage);
+    console.warn('Ignored quota/transient Firestore error:', errorMessage);
     return true; // Indicates it is benign
   }
 
