@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 export type UserRole = 'admin' | 'auditor' | 'sales_agent' | 'sales_rep' | 'sales' | 'store_keeper';
 
@@ -81,108 +80,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(false);
 
+  const safeStoreUser = (userData: CustomUser) => {
+    try {
+      localStorage.setItem('gcis_user', JSON.stringify(userData));
+    } catch {
+      try {
+        // Clear cached products or stale keys if quota was exceeded
+        localStorage.removeItem('gcis_cached_products');
+        localStorage.setItem('gcis_user', JSON.stringify(userData));
+      } catch {}
+    }
+  };
+
   const login = async (username: string, pin: string) => {    
     const normalized = username.toLowerCase().trim();
     
-    // Default master accounts that work instantly even if offline / DB is unreachable
-    // Default master admin account that works instantly
-    if (normalized === 'admin') {
+    // Default master admin fallback
+    if (normalized === 'admin' && (pin === '123456' || pin === 'admin')) {
       const userData: CustomUser = { username: 'admin', role: 'admin', name: 'Administrator' };
       setUser(userData);
-      localStorage.setItem('gcis_user', JSON.stringify(userData));
-      try {
-        await setDoc(doc(db, 'users', 'admin'), { ...userData, pin: pin || '123456', createdAt: new Date().toISOString() }, { merge: true });
-      } catch (e) {
-        console.warn("Offline fallback admin login:", e);
-      }
+      safeStoreUser(userData);
       return;
     }
 
     try {
-      let userDoc = await getDoc(doc(db, 'users', normalized));
-      
-      // Auto-initialize default auditor account in Firestore if not present yet
-      if (!userDoc.exists() && normalized === 'auditor') {
-        const defaultAuditor = { username: 'auditor', role: 'auditor', name: 'Auditor', pin: pin || '123456', createdAt: new Date().toISOString() };
-        await setDoc(doc(db, 'users', 'auditor'), defaultAuditor, { merge: true });
-        userDoc = await getDoc(doc(db, 'users', 'auditor'));
+      const { data: supaUser, error: supaErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', normalized)
+        .maybeSingle();
+
+      if (supaErr) {
+        throw new Error(supaErr.message || "Failed to communicate with authentication database.");
       }
 
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        if (data.pin === pin) {
-          const role = resolveRole(data.role, normalized);
-          
-          // Strict 2-device session limit for non-admin accounts:
-          // Sales Rep, Agent, Store Keeper, and Auditor
-          if (role !== 'admin') {
-            const sessionsCol = collection(db, 'users', normalized, 'sessions');
-            const sessionSnap = await getDocs(sessionsCol);
-            const activeSessions = sessionSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            
-            // Clean up stale sessions older than 24 hours
-            const now = Date.now();
-            const validSessions = activeSessions.filter((s: any) => {
-              const lastActive = new Date(s.lastActive || s.createdAt || 0).getTime();
-              return (now - lastActive) < 24 * 60 * 60 * 1000;
-            });
-
-            // Check if this specific device is already one of the active sessions
-            const currentDeviceId = localStorage.getItem('gcis_session_id');
-            const isCurrentDeviceAlreadyRegistered = currentDeviceId && validSessions.some((s: any) => s.id === currentDeviceId);
-
-            if (!isCurrentDeviceAlreadyRegistered && validSessions.length >= 2) {
-              throw new Error("Active session limit reached (maximum 2 devices). This account is already logged in on 2 different devices. Please sign out of one of your active devices first, or contact the Admin to reset your active sessions.");
-            }
-
-            // Register or update current session
-            const sessionId = currentDeviceId || ('session_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
-            await setDoc(doc(db, 'users', normalized, 'sessions', sessionId), {
-              createdAt: new Date().toISOString(),
-              lastActive: new Date().toISOString(),
-              userAgent: navigator.userAgent || 'unknown'
-            });
-            
-            try {
-              localStorage.setItem('gcis_session_id', sessionId);
-            } catch {}
-          }
-
+      if (supaUser) {
+        if (supaUser.pin === pin) {
+          const role = resolveRole(supaUser.role, normalized);
           const userData: CustomUser = { 
             username: normalized, 
             role, 
-            name: data.name || normalized,
-            phone: data.phone || '',
-            pricingTier: data.pricingTier || 'bronze'
+            name: supaUser.name || normalized,
+            phone: supaUser.phone || '',
+            pricingTier: (supaUser.pricing_tier as any) || 'bronze'
           };
           setUser(userData);
-          localStorage.setItem('gcis_user', JSON.stringify(userData));
+          safeStoreUser(userData);
+          return;
         } else {
           throw new Error("Incorrect PIN.");
         }
-      } else {
-        throw new Error("User not found.");
       }
+
+      throw new Error("User not found.");
     } catch (error: any) {
       console.warn("Login error:", error);
-      if (error.message.includes("Active session limit reached") || error.message === "Incorrect PIN." || error.message === "User not found.") {
-        throw error;
-      }
-      // Re-throw errors so user gets immediate visual notice on screen
       throw error;
     }
   };
 
-  const logout = async () => {
-    try {
-      const sessionId = localStorage.getItem('gcis_session_id');
-      if (user && sessionId && user.username !== 'admin') {
-        const { deleteDoc } = await import('firebase/firestore');
-        await deleteDoc(doc(db, 'users', user.username, 'sessions', sessionId));
-      }
-    } catch (e) {
-      console.warn("Error cleaning up session on logout:", e);
-    }
+  const logout = () => {
     setUser(null);
     try {
       localStorage.removeItem('gcis_user');

@@ -5,8 +5,22 @@ import { defineConfig } from 'vite';
 import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const VALID_SUPABASE_URL = 'https://oztkjwtocktrnkfdfrhk.supabase.co';
+const VALID_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96dGtqd3RvY2t0cm5rZmRmcmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5MjUyODAsImV4cCI6MjEwODUwMTI4MH0.LJK89RWpzrc4B1gykEftp2gdJ0ztAvH8me3bBFYjz6s';
+
+if (!process.env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL.includes('oztkjwtocktrnkfdfrhk')) {
+  process.env.VITE_SUPABASE_URL = VALID_SUPABASE_URL;
+  if (!process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY.includes('infbltkzxzcyhwhjdupk')) {
+    process.env.VITE_SUPABASE_ANON_KEY = VALID_SUPABASE_ANON_KEY;
+  }
+}
+
 export default defineConfig(() => {
   return {
+    define: {
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || VALID_SUPABASE_URL),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || VALID_SUPABASE_ANON_KEY),
+    },
     plugins: [
       react(), 
       tailwindcss(),

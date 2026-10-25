@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import { googleDriveSignIn, uploadFileToGoogleDrive, syncAllPendingFilesToDrive, getPendingSyncCounts } from '../lib/drive';
 import toast from 'react-hot-toast';
@@ -33,10 +31,10 @@ export default function Settings() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'company');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        // Read from Supabase first
+        const { data: supaSetting } = await supabase.from('settings').select('*').eq('key', 'company').maybeSingle();
+        if (supaSetting && supaSetting.value) {
+          const data = supaSetting.value;
           setName(data.name || '');
           setAddress(data.address || '');
           setEmail(data.email || '');
@@ -48,17 +46,18 @@ export default function Settings() {
             setDriveConnectedBy(data.driveConnectedBy || 'Admin');
             setDriveConnectedAt(data.driveConnectedAt || '');
           }
-        } else {
-          setName('Green Collar Integrated Services');
-          setAddress('12 Industrial Way, Ikeja\nLagos, Nigeria');
-          setEmail('finance@gcis.com');
+          setLoading(false);
+          return;
         }
+
+        setName('Green Collar Integrated Services');
+        setAddress('32, Beside Bridgestone Building, Via Mama-Gold, \nSeventh Day Road, Okebola, Ibadan.');
+        setEmail('greencollarsintegratedservice@gmail.com');
       } catch (error) {
-        if (!handleFirestoreError(error, OperationType.GET, 'settings/company')) {
-          setName('Green Collar Integrated Services');
-          setAddress('12 Industrial Way, Ikeja\nLagos, Nigeria');
-          setEmail('finance@gcis.com');
-        }
+        console.warn("Settings fetch error:", error);
+        setName('Green Collar Integrated Services');
+        setAddress('32, Beside Bridgestone Building, Via Mama-Gold, \nSeventh Day Road, Okebola, Ibadan.');
+        setEmail('greencollarsintegratedservice@gmail.com');
       } finally {
         setLoading(false);
       }
@@ -150,10 +149,18 @@ export default function Settings() {
   const handleDisconnectDrive = async () => {
     if (!confirm('Disconnect Company Google Drive? Dual-storage direct storage will continue to safely protect all payment proofs.')) return;
     try {
-      await updateDoc(doc(db, 'settings', 'company'), {
+      const { data: curSetting } = await supabase.from('settings').select('value').eq('key', 'company').maybeSingle();
+      const curValue = curSetting?.value || {};
+      const updatedValue = {
+        ...curValue,
         driveAccessToken: '',
         driveConnectedBy: '',
         driveConnectedAt: ''
+      };
+      await supabase.from('settings').upsert({
+        key: 'company',
+        value: updatedValue,
+        updated_at: new Date().toISOString()
       });
       setDriveConnected(false);
       setDriveConnectedBy('');
@@ -169,12 +176,20 @@ export default function Settings() {
     if (!isAdmin) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'settings', 'company'), {
-        name, address, email, phone, logoUrl, paymentAccounts
-      }, { merge: true });
+      // Save directly to Supabase settings table
+      await supabase.from('settings').upsert({
+        key: 'company',
+        value: {
+          name, address, email, phone, logoUrl, paymentAccounts
+        },
+        updated_at: new Date().toISOString()
+      });
+
+
+
       toast.success('Settings saved successfully!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'settings/company');
+    } catch (error: any) {
+      toast.error('Error saving settings: ' + (error.message || 'Error'));
     } finally {
       setSaving(false);
     }
@@ -196,8 +211,13 @@ export default function Settings() {
   const exportData = async (collectionName: string) => {
     setExporting(collectionName);
     try {
-      const querySnapshot = await getDocs(collection(db, collectionName));
-      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let data: any[] = [];
+      
+      // Query from Supabase first
+      const { data: supaData, error } = await supabase.from(collectionName).select('*');
+      if (!error && supaData && supaData.length > 0) {
+        data = supaData;
+      }
       
       if (data.length === 0) {
         toast.error(`No data found in ${collectionName}.`);
@@ -345,25 +365,25 @@ export default function Settings() {
               onClick={async () => {
                 setExporting('complete_json');
                 try {
-                  const [invSnap, clientSnap, prodSnap, userSnap, auditSnap, setSnap] = await Promise.all([
-                    getDocs(collection(db, 'invoices')),
-                    getDocs(collection(db, 'clients')),
-                    getDocs(collection(db, 'products')),
-                    getDocs(collection(db, 'users')),
-                    getDocs(collection(db, 'weekly_audits')),
-                    getDoc(doc(db, 'settings', 'company'))
+                  const [invRes, clientRes, prodRes, userRes, auditRes, setRes] = await Promise.all([
+                    supabase.from('invoices').select('*'),
+                    supabase.from('clients').select('*'),
+                    supabase.from('products').select('*'),
+                    supabase.from('users').select('*'),
+                    supabase.from('weekly_audits').select('*'),
+                    supabase.from('settings').select('*').eq('key', 'company').maybeSingle()
                   ]);
 
                   const backupData = {
-                    version: '1.0',
+                    version: '2.0-supabase',
                     exportedAt: new Date().toISOString(),
-                    databaseId: 'ai-studio-greencollarinvoi-9ce33305-f854-43c2-b869-3c9c944e469d',
-                    invoices: invSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-                    clients: clientSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-                    products: prodSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-                    users: userSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-                    weeklyAudits: auditSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-                    companySettings: setSnap.exists() ? setSnap.data() : null
+                    database: 'Supabase PostgreSQL',
+                    invoices: invRes.data || [],
+                    clients: clientRes.data || [],
+                    products: prodRes.data || [],
+                    users: userRes.data || [],
+                    weeklyAudits: auditRes.data || [],
+                    companySettings: setRes.data?.value || null
                   };
 
                   const jsonStr = JSON.stringify(backupData, null, 2);

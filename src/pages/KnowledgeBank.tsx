@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import { BookOpen, Upload, Search, FileText, Trash2, Edit2, X, Save, CheckCircle2, AlertTriangle, AlertCircle, Plus } from 'lucide-react';
 import Papa from 'papaparse';
@@ -22,19 +21,33 @@ export default function KnowledgeBank() {
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const loadProducts = async () => {
+    try {
+      const { data, error } = await supabase.from('products').select('*').order('name', { ascending: true });
+      if (error) throw error;
+      const formatted = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        price: Number(p.price || 0),
+        wholesalePriceBronze: Number(p.wholesale_price_bronze || 0),
+        wholesalePriceSilver: Number(p.wholesale_price_silver || 0),
+        wholesalePriceGold: Number(p.wholesale_price_gold || 0),
+        category: p.category || 'General',
+        description: p.description || '',
+        available: p.available !== false,
+        imageUrl: p.image_url || '',
+        updatedAt: p.updated_at
+      }));
+      setProducts(formatted);
+    } catch (err) {
+      console.warn("KnowledgeBank fetch error from Supabase:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const q = query(collection(db, 'products'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort alphabetically
-      data.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
-      setProducts(data);
-      setLoading(false);
-    }, (error) => {
-      console.warn("KnowledgeBank onSnapshot error:", error);
-      setLoading(false);
-    });
-    return unsubscribe;
+    loadProducts();
   }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,85 +119,63 @@ export default function KnowledgeBank() {
       }
 
       for (const chunk of chunks) {
-        // Retry logic for batch commit to handle transport errors
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            const batch = writeBatch(db);
-            chunk.forEach(row => {
-              const name = row[nameKey];
-              let price = row[priceKey];
-              let wholesalePrice = wholesalePriceKey ? row[wholesalePriceKey] : undefined;
-              
-              if (!name) return; // Skip empty names
-              
-              if (typeof price === 'string') {
-                price = parseFloat(price.replace(/[^0-9.-]+/g, ""));
-              }
-              if (isNaN(price)) price = 0;
-              
-              if (typeof wholesalePrice === 'string') {
-                wholesalePrice = parseFloat(wholesalePrice.replace(/[^0-9.-]+/g, ""));
-              }
-              if (wholesalePrice !== undefined && isNaN(wholesalePrice)) wholesalePrice = 0;
-
-              let docId = name.toString().toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-              if (!docId) {
-                docId = `prod-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-              }
-              const docRef = doc(db, 'products', docId);
-              const productData: any = {
-                name: name.toString(),
-                price: price,
-                updatedAt: new Date().toISOString()
-              };
-              if (wholesalePrice !== undefined) {
-                if (currentTab === 'gold') productData.wholesalePriceGold = wholesalePrice;
-                else if (currentTab === 'silver') productData.wholesalePriceSilver = wholesalePrice;
-                else productData.wholesalePriceBronze = wholesalePrice;
-              }
-              
-              const category = row['Category'] || row['category'];
-              if (category) productData.category = category;
-              else productData.category = 'General';
-
-              const desc = row['Description'] || row['description'] || row['Desc'] || row['desc'];
-              if (desc) productData.description = desc;
-
-              // Check availability from file if provided, default to true
-              const availKey = keys.find(k => k.toLowerCase().includes('avail') || k.toLowerCase().includes('stock') || k.toLowerCase().includes('status'));
-              let isAvail = true;
-              if (availKey && row[availKey] !== undefined && row[availKey] !== null) {
-                const val = String(row[availKey]).toLowerCase().trim();
-                if (val === 'false' || val === 'no' || val === 'unavailable' || val === 'out of stock' || val === '0') {
-                  isAvail = false;
-                }
-              }
-              productData.available = isAvail;
-              
-              // Only overwrite with new description if it is provided and detailed
-              // Actually let's capture all extra fields dynamically
-              Object.keys(row).forEach(k => {
-                const lowerK = k.toLowerCase();
-                if (!lowerK.includes('name') && !lowerK.includes('price') && !lowerK.includes('category') && !lowerK.includes('desc') && !lowerK.includes('avail') && !lowerK.includes('stock') && !lowerK.includes('status') && row[k]) {
-                   productData[k] = row[k];
-                }
-              });
-
-              batch.set(docRef, productData, { merge: true }); 
-            });
-            
-            await batch.commit();
-            break;
-          } catch (err: any) {
-            retries--;
-            if (retries === 0) throw err;
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        const supaRows: any[] = [];
+        chunk.forEach(row => {
+          const name = row[nameKey];
+          let price = row[priceKey];
+          let wholesalePrice = wholesalePriceKey ? row[wholesalePriceKey] : undefined;
+          
+          if (!name) return; // Skip empty names
+          
+          if (typeof price === 'string') {
+            price = parseFloat(price.replace(/[^0-9.-]+/g, ""));
           }
+          if (isNaN(price)) price = 0;
+          
+          if (typeof wholesalePrice === 'string') {
+            wholesalePrice = parseFloat(wholesalePrice.replace(/[^0-9.-]+/g, ""));
+          }
+          if (wholesalePrice !== undefined && isNaN(wholesalePrice)) wholesalePrice = 0;
+
+          let docId = name.toString().toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          if (!docId) {
+            docId = `prod-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          }
+
+          const category = row['Category'] || row['category'] || 'General';
+          const desc = row['Description'] || row['description'] || row['Desc'] || row['desc'] || '';
+
+          const availKey = keys.find(k => k.toLowerCase().includes('avail') || k.toLowerCase().includes('stock') || k.toLowerCase().includes('status'));
+          let isAvail = true;
+          if (availKey && row[availKey] !== undefined && row[availKey] !== null) {
+            const val = String(row[availKey]).toLowerCase().trim();
+            if (val === 'false' || val === 'no' || val === 'unavailable' || val === 'out of stock' || val === '0') {
+              isAvail = false;
+            }
+          }
+
+          supaRows.push({
+            id: docId,
+            name: name.toString(),
+            price: price,
+            wholesale_price_bronze: currentTab === 'bronze' && wholesalePrice !== undefined ? wholesalePrice : 0,
+            wholesale_price_silver: currentTab === 'silver' && wholesalePrice !== undefined ? wholesalePrice : 0,
+            wholesale_price_gold: currentTab === 'gold' && wholesalePrice !== undefined ? wholesalePrice : 0,
+            category: category,
+            description: desc,
+            available: isAvail,
+            updated_at: new Date().toISOString()
+          });
+        });
+
+        if (supaRows.length > 0) {
+          const { error: supaErr } = await supabase.from('products').upsert(supaRows);
+          if (supaErr) console.warn("Supabase import error:", supaErr);
         }
-        await new Promise(resolve => setTimeout(resolve, 500));
+
       }
 
+      await loadProducts();
       setUploadStatus({ type: 'success', message: `Successfully imported ${data.length} products!` });
     } catch (error: any) {
       setUploadStatus({ type: 'error', message: error.message || 'Error saving to database.' });
@@ -195,10 +186,11 @@ export default function KnowledgeBank() {
 
   const handleToggleAvailability = async (id: string, newAvailable: boolean) => {
     try {
-      await setDoc(doc(db, 'products', id), {
+      await supabase.from('products').update({
         available: newAvailable,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+
       toast.success(newAvailable ? 'Marked as Available' : 'Marked as Out of Stock');
     } catch (err) {
       console.error(err);
@@ -210,21 +202,14 @@ export default function KnowledgeBank() {
     if (selectedIds.size === 0) return;
     try {
       const ids = Array.from(selectedIds);
-      const chunks = [];
-      for (let i = 0; i < ids.length; i += 400) {
-        chunks.push(ids.slice(i, i + 400));
-      }
+      await supabase.from('products').update({
+        available: newAvailable,
+        updated_at: new Date().toISOString()
+      }).in('id', ids);
 
-      for (const chunk of chunks) {
-        const batch = writeBatch(db);
-        chunk.forEach(id => {
-          batch.set(doc(db, 'products', id), {
-            available: newAvailable,
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        });
-        await batch.commit();
-      }
+
+
+      setProducts(prev => prev.map(p => selectedIds.has(p.id) ? { ...p, available: newAvailable } : p));
       toast.success(`Marked ${ids.length} products as ${newAvailable ? 'Available' : 'Out of Stock'}`);
       setSelectedIds(new Set());
     } catch (err) {
@@ -250,7 +235,22 @@ export default function KnowledgeBank() {
   const handleSaveEdit = async () => {
     if (!editingId) return;
     try {
-      await setDoc(doc(db, 'products', editingId), {
+      await supabase.from('products').update({
+        name: editForm.name,
+        price: editForm.price,
+        wholesale_price_bronze: editForm.wholesalePriceBronze,
+        wholesale_price_silver: editForm.wholesalePriceSilver,
+        wholesale_price_gold: editForm.wholesalePriceGold,
+        category: editForm.category,
+        description: editForm.description,
+        available: editForm.available,
+        updated_at: new Date().toISOString()
+      }).eq('id', editingId);
+
+
+
+      setProducts(prev => prev.map(p => p.id === editingId ? {
+        ...p,
         name: editForm.name,
         price: editForm.price,
         wholesalePriceBronze: editForm.wholesalePriceBronze,
@@ -258,9 +258,9 @@ export default function KnowledgeBank() {
         wholesalePriceGold: editForm.wholesalePriceGold,
         category: editForm.category,
         description: editForm.description,
-        available: editForm.available,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+        available: editForm.available
+      } : p));
+
       toast.success('Product updated successfully');
       setEditingId(null);
     } catch (err) {
@@ -274,7 +274,11 @@ export default function KnowledgeBank() {
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await deleteDoc(doc(db, 'products', id));
+      await supabase.from('products').delete().eq('id', id);
+
+
+
+      setProducts(prev => prev.filter(p => p.id !== id));
       setSelectedIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(id);
@@ -293,18 +297,12 @@ export default function KnowledgeBank() {
 
     try {
       const ids = Array.from(selectedIds);
-      const chunks = [];
-      for (let i = 0; i < ids.length; i += 400) {
-        chunks.push(ids.slice(i, i + 400));
-      }
+      await supabase.from('products').delete().in('id', ids);
 
-      for (const chunk of chunks) {
-        const batch = writeBatch(db);
-        chunk.forEach(id => {
-          batch.delete(doc(db, 'products', id));
-        });
-        await batch.commit();
-      }
+
+
+      const idSet = new Set(ids);
+      setProducts(prev => prev.filter(p => !idSet.has(p.id)));
       setSelectedIds(new Set());
       toast.success(`Deleted ${ids.length} products`);
     } catch (err) {

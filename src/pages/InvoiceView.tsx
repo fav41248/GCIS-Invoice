@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
-import { handleFirestoreError, OperationType } from '../lib/db';
 import { Printer, ArrowLeft, Eye } from 'lucide-react';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
 import { getStaticAccountsForRole } from '../lib/paymentAccounts';
 import { ProofViewerModal } from '../components/ProofViewerModal';
-import { updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 
 export default function InvoiceView() {
@@ -22,13 +19,56 @@ export default function InvoiceView() {
     const fetchData = async () => {
       if (!id) return;
       try {
-        const invSnap = await getDoc(doc(db, 'invoices', id));
-        if (invSnap.exists()) setInvoice(invSnap.data());
+        // 1. Fetch invoice from Supabase
+        const { data: invData } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (invData) {
+          setInvoice({
+            id: invData.id,
+            invoiceNumber: invData.invoice_number,
+            clientName: invData.client_name,
+            clientAddress: invData.client_address,
+            clientEmail: invData.client_email,
+            clientPhone: invData.client_phone,
+            items: invData.items,
+            subtotal: Number(invData.subtotal || 0),
+            vatRate: Number(invData.vat_rate || 0),
+            vatAmount: Number(invData.vat_amount || 0),
+            grandTotal: Number(invData.grand_total || 0),
+            wholesaleTotal: Number(invData.wholesale_total || 0),
+            profitTotal: Number(invData.profit_total || 0),
+            currency: invData.currency,
+            status: invData.status,
+            profitStatus: invData.profit_status,
+            proofOfPayment: invData.proof_of_payment,
+            proofOfPaymentName: invData.proof_of_payment_name,
+            proofNote: invData.proof_note,
+            auditStatus: invData.audit_status,
+            auditorVerified: invData.auditor_verified,
+            createdBy: invData.created_by,
+            createdByEmail: invData.created_by_email,
+            issueDate: invData.issue_date,
+            dueDate: invData.due_date,
+            createdAt: invData.created_at
+          });
+        }
         
-        const setSnap = await getDoc(doc(db, 'settings', 'company'));
-        if (setSnap.exists()) setSettings(setSnap.data());
+        // 2. Fetch settings
+        const { data: supaSettings } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'company')
+          .maybeSingle();
+
+        if (supaSettings?.value) {
+          setSettings(supaSettings.value);
+        }
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `invoices/${id}`);
+        console.warn("Error fetching invoice view:", error);
       } finally {
         setLoading(false);
       }
@@ -45,17 +85,13 @@ export default function InvoiceView() {
     if (!isAuditor && !isAdmin) return;
     try {
       const newVerified = !invoice.auditorVerified;
-      const auditorName = user?.name || user?.username || 'Auditor';
-      await updateDoc(doc(db, 'invoices', id!), {
-        auditorVerified: newVerified,
-        auditorVerifiedAt: newVerified ? new Date().toISOString() : '',
-        auditorVerifiedBy: newVerified ? auditorName : '',
-        proofLocked: newVerified
-      });
+      await supabase.from('invoices').update({
+        auditor_verified: newVerified
+      }).eq('id', id!);
+
       setInvoice((prev: any) => ({
         ...prev,
         auditorVerified: newVerified,
-        auditorVerifiedBy: newVerified ? auditorName : '',
         proofLocked: newVerified
       }));
       toast.success(newVerified ? `Audit match verified` : `Verification removed`);

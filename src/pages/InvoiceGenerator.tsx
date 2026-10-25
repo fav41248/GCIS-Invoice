@@ -1,10 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CheckCircle2, Printer, Save, AlertCircle, Lock, Building2 } from 'lucide-react';
-import { collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc, setDoc, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
-import { OperationType, handleFirestoreError } from '../lib/db';
 import { useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
@@ -32,16 +30,16 @@ export default function InvoiceGenerator() {
   useEffect(() => {
     const fetchLatestInvoiceNumber = async () => {
       try {
-        const q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'), limit(1));
-        const snapshot = await getDocs(q);
+        const currentYear = new Date().getFullYear();
+        const { data } = await supabase
+          .from('invoices')
+          .select('invoice_number')
+          .order('created_at', { ascending: false })
+          .limit(1);
         
         let nextNumber = 1;
-        const currentYear = new Date().getFullYear();
-        
-        if (!snapshot.empty) {
-          const lastInvoice = snapshot.docs[0].data();
-          const lastNumberStr = lastInvoice.invoiceNumber;
-          // Assuming format INV-YYYY-XXXX
+        if (data && data.length > 0) {
+          const lastNumberStr = data[0].invoice_number || '';
           const parts = lastNumberStr.split('-');
           if (parts.length === 3 && parts[1] === currentYear.toString()) {
             nextNumber = parseInt(parts[2], 10) + 1;
@@ -113,18 +111,17 @@ export default function InvoiceGenerator() {
     const fetchData = async () => {
       try {
         if (!user) return;
-        const clientsRef = collection(db, 'clients');
-        const clientQuery = isAdmin 
-          ? query(clientsRef) 
-          : query(clientsRef, where('createdBy', '==', user.username));
-        const clientSnap = await getDocs(clientQuery);
-        const productSnap = await getDocs(collection(db, 'products'));
-        setProducts(productSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
-        
-        const fetchedClients: any[] = clientSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // 1. Fetch clients from Supabase
+        const { data: supaClients } = await supabase
+          .from('clients')
+          .select('*')
+          .order('name', { ascending: true });
+
+        const fetchedClients = supaClients || [];
         setClients(fetchedClients);
 
-        // Pre-select client if passed via URL (e.g. /generator?clientId=...)
+        // Pre-select client if passed via URL
         const searchParams = new URLSearchParams(location.search);
         const preselectedClientId = searchParams.get('clientId');
         if (preselectedClientId) {
@@ -136,20 +133,47 @@ export default function InvoiceGenerator() {
             setBillToPhone(matched.phone || '');
           }
         }
+
+        // 2. Fetch products from Supabase
+        const { data: supaProducts } = await supabase
+          .from('products')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (supaProducts) {
+          const formattedProducts = supaProducts.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            category: p.category,
+            price: Number(p.price || 0),
+            wholesalePriceBronze: p.wholesale_price_bronze !== null ? Number(p.wholesale_price_bronze) : null,
+            wholesalePriceSilver: p.wholesale_price_silver !== null ? Number(p.wholesale_price_silver) : null,
+            wholesalePriceGold: p.wholesale_price_gold !== null ? Number(p.wholesale_price_gold) : null,
+            available: p.available !== false,
+            imageUrl: p.image_url || ''
+          }));
+          setProducts(formattedProducts);
+        }
         
-        const settingsSnap = await getDoc(doc(db, 'settings', 'company'));
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          setCompanySettings(data);
-          const initialStatic = getStaticAccountsForRole(userRole, data.paymentAccounts);
+        // 3. Fetch company settings from Supabase
+        const { data: supaSettings } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'company')
+          .maybeSingle();
+
+        if (supaSettings?.value) {
+          setCompanySettings(supaSettings.value);
+          const initialStatic = getStaticAccountsForRole(userRole, supaSettings.value.paymentAccounts);
           if (initialStatic && initialStatic.length > 0) {
             setSelectedAccounts(initialStatic.map((a: any) => a.id));
-          } else if (data.paymentAccounts && data.paymentAccounts.length > 0) {
-            setSelectedAccounts([data.paymentAccounts[0].id]);
+          } else if (supaSettings.value.paymentAccounts && supaSettings.value.paymentAccounts.length > 0) {
+            setSelectedAccounts([supaSettings.value.paymentAccounts[0].id]);
           }
         }
       } catch (error) {
-        console.error(error);
+        console.warn("Error fetching data in InvoiceGenerator:", error);
       }
     };
     fetchData();
@@ -350,78 +374,66 @@ export default function InvoiceGenerator() {
       const trimmedClientName = billTo.trim();
 
       try {
-        const clientQuery = query(
-          collection(db, 'clients'),
-          where('createdBy', '==', user.username)
-        );
-        const existingClientsSnap = await getDocs(clientQuery);
-        const existingClientMatch = existingClientsSnap.docs.find(d => 
-          (d.data().name || '').trim().toLowerCase() === trimmedClientName.toLowerCase()
-        );
+        const { data: clientMatches } = await supabase
+          .from('clients')
+          .select('id, name')
+          .ilike('name', trimmedClientName)
+          .limit(1);
 
-        if (existingClientMatch) {
-          finalClientId = existingClientMatch.id;
-          // Update client phone or address if newly provided
+        if (clientMatches && clientMatches.length > 0) {
+          finalClientId = clientMatches[0].id;
           if (billToPhone.trim() || billToAddress.trim()) {
-            await setDoc(doc(db, 'clients', finalClientId), {
+            await supabase.from('clients').update({
               ...(billToPhone.trim() ? { phone: billToPhone.trim() } : {}),
-              ...(billToAddress.trim() ? { address: billToAddress.trim() } : {}),
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+              ...(billToAddress.trim() ? { address: billToAddress.trim() } : {})
+            }).eq('id', finalClientId);
           }
         } else {
-          // Auto-create new client for this sales agent / rep
           finalClientId = `client_${Date.now()}`;
-          await setDoc(doc(db, 'clients', finalClientId), {
+          await supabase.from('clients').insert({
+            id: finalClientId,
             name: trimmedClientName,
             address: billToAddress.trim() || '',
             phone: billToPhone.trim() || '',
-            email: '',
-            createdBy: user.username,
-            createdByRole: isRep ? 'sales_rep' : user.role === 'admin' ? 'admin' : 'sales_agent',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
+            email: ''
+          });
         }
       } catch (clientErr) {
-        console.warn("Could not auto-register client:", clientErr);
+        console.warn("Could not auto-register client in Supabase:", clientErr);
       }
 
-      const invoiceData = {
-        invoiceNumber,
-        clientId: finalClientId || 'unknown',
-        clientName: billTo.trim(),
-        clientAddress: billToAddress.trim(),
-        clientPhone: billToPhone.trim(),
+      const invoiceId = `inv_${Date.now()}`;
+      const supaInvoiceData = {
+        id: invoiceId,
+        invoice_number: invoiceNumber,
+        client_id: finalClientId || 'unknown',
+        client_name: billTo.trim(),
+        client_address: billToAddress.trim(),
+        client_phone: billToPhone.trim(),
         items: itemsWithWholesale,
         subtotal,
-        vatRate,
-        vatAmount,
-        grandTotal,
-        wholesaleTotal,
-        profitTotal,
+        vat_rate: vatRate,
+        vat_amount: vatAmount,
+        grand_total: grandTotal,
+        wholesale_total: wholesaleTotal,
+        profit_total: profitTotal,
         currency,
-        issueDate,
-        dueDate,
+        issue_date: issueDate,
+        due_date: dueDate,
         status: 'unpaid',
-        profitStatus: isRep ? 'salaried_staff' : 'unpaid', // unpaid, paid, confirmed, salaried_staff
-        paymentNotes: notes,
-        paymentAccounts: activePaymentAccounts,
-        createdBy: user?.username || 'Unknown',
-        createdByEmail: user?.name || 'Unknown',
-        repCategory: isRep ? 'sales_rep' : 'sales_agent',
-        pricingTier: isRep ? null : (user?.pricingTier || 'bronze'),
-        repPhone: user?.phone || '',
-        proofOfPayment: '',
-        createdAt: new Date().toISOString(),
-        paidAt: ''
+        profit_status: isRep ? 'salaried_staff' : 'unpaid',
+        created_by: user?.username || 'Unknown',
+        created_by_email: user?.name || 'Unknown',
+        proof_of_payment: ''
       };
       
-      const docRef = await addDoc(collection(db, 'invoices'), invoiceData);
-      setSavedDocId(docRef.id);
+      const { error: insErr } = await supabase.from('invoices').insert(supaInvoiceData);
+      if (insErr) throw insErr;
+
+      setSavedDocId(invoiceId);
       return true;
-    } catch (error) {
-       handleFirestoreError(error, OperationType.CREATE, 'invoices');
+    } catch (error: any) {
+       toast.error('Failed to create invoice: ' + (error.message || error));
        return false;
     } finally {
       setIsSaving(false);

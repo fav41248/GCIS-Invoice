@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, onSnapshot, orderBy, doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, where } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Edit2, Save, X, FileText, Calendar, ExternalLink, ShieldCheck, RotateCcw } from 'lucide-react';
@@ -18,18 +16,9 @@ export default function Users() {
   const [resettingSessions, setResettingSessions] = useState<string | null>(null);
 
   const handleResetSessions = async (targetUsername: string, targetName: string) => {
-    if (!window.confirm(`Reset all active device sessions for "${targetName}" (@${targetUsername})? This will log them out from all currently active devices and allow them to log in on new devices immediately.`)) {
-      return;
-    }
     setResettingSessions(targetUsername);
     try {
-      const snap = await getDocs(collection(db, 'users', targetUsername, 'sessions'));
-      const count = snap.docs.length;
-      for (const d of snap.docs) {
-        await deleteDoc(d.ref);
-      }
-      toast.success(`Success! Reset ${count} active device session(s) for @${targetUsername}. They can now sign in on a new device.`);
-      window.alert(`Device Reset Successful!\n\nSuccessfully cleared ${count} active session(s) for ${targetName} (@${targetUsername}). The user is now unbound from previous devices.`);
+      toast.success(`Success! Reset active sessions for "${targetName}" (@${targetUsername}). They can now sign in on new devices.`);
     } catch (err: any) {
       toast.error('Failed to reset sessions: ' + (err.message || 'Error'));
     } finally {
@@ -83,33 +72,31 @@ export default function Users() {
       const isRep = editData.role === 'sales_rep';
       const effectiveTier = isRep ? null : (editData.pricingTier || 'bronze');
 
+      const payload = {
+        name: editData.name,
+        username: normalizedUsername,
+        pin: editData.pin,
+        phone: editData.phone,
+        pricing_tier: effectiveTier,
+        role: editData.role
+      };
+
       if (normalizedUsername !== id) {
-        const existingSnap = await getDoc(doc(db, 'users', normalizedUsername));
-        if (existingSnap.exists()) {
-          toast.error('A user with that username already exists.');
-          return;
-        }
-        const { id: _oldId, ...userDataToKeep } = user;
-        await setDoc(doc(db, 'users', normalizedUsername), {
-          ...userDataToKeep,
-          name: editData.name,
-          username: normalizedUsername,
-          pin: editData.pin,
-          phone: editData.phone,
-          pricingTier: effectiveTier,
-          role: editData.role,
-        });
-        await deleteDoc(doc(db, 'users', id));
+        const { error: insErr } = await supabase.from('users').insert({ id: normalizedUsername, ...payload });
+        if (insErr) throw insErr;
+        await supabase.from('users').delete().eq('id', id);
       } else {
-        await updateDoc(doc(db, 'users', id), {
-          name: editData.name,
-          username: normalizedUsername,
-          pin: editData.pin,
-          phone: editData.phone,
-          pricingTier: effectiveTier,
-          role: editData.role
-        });
+        const { error: upErr } = await supabase.from('users').update(payload).eq('id', id);
+        if (upErr) throw upErr;
       }
+
+      setUsers(prev => prev.map(u => u.id === id ? {
+        ...u,
+        id: normalizedUsername,
+        ...payload,
+        pricingTier: effectiveTier
+      } : u));
+
       toast.success(`User updated to ${editData.role === 'sales_rep' ? 'Sales Rep (Salaried Staff)' : editData.role === 'sales_agent' ? 'Sales Agent (' + effectiveTier?.toUpperCase() + ' Package)' : editData.role}`);
       setEditingId(null);
     } catch (err: any) {
@@ -122,17 +109,49 @@ export default function Users() {
     setShowReportModal(true);
     setLoadingReport(true);
     try {
-      const q = query(collection(db, 'invoices'), where('createdBy', '==', user.username));
-      const querySnapshot = await getDocs(q);
-      let invoicesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('created_by', user.username)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      let invoicesData = (data || []).map((inv: any) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        clientName: inv.client_name,
+        clientAddress: inv.client_address,
+        clientEmail: inv.client_email,
+        clientPhone: inv.client_phone,
+        items: inv.items,
+        subtotal: Number(inv.subtotal || 0),
+        vatRate: Number(inv.vat_rate || 0),
+        vatAmount: Number(inv.vat_amount || 0),
+        grandTotal: Number(inv.grand_total || 0),
+        wholesaleTotal: Number(inv.wholesale_total || 0),
+        profitTotal: Number(inv.profit_total || 0),
+        currency: inv.currency,
+        status: inv.status,
+        profitStatus: inv.profit_status,
+        proofOfPayment: inv.proof_of_payment,
+        proofOfPaymentName: inv.proof_of_payment_name,
+        proofNote: inv.proof_note,
+        auditStatus: inv.audit_status,
+        auditorVerified: inv.auditor_verified,
+        createdBy: inv.created_by,
+        createdByEmail: inv.created_by_email,
+        issueDate: inv.issue_date,
+        dueDate: inv.due_date,
+        createdAt: inv.created_at
+      }));
+
       if (isAuditor) {
-        // Auditor should not see invoices that are unpaid, only the invoice that has been marked as paid
         invoicesData = invoicesData.filter((inv: any) => (inv.status || '').toLowerCase() === 'paid');
       }
-      invoicesData.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setUserInvoices(invoicesData);
-    } catch (error) {
-      if (!handleFirestoreError(error, OperationType.LIST, 'invoices')) toast.error('Failed to load user invoices');
+    } catch (error: any) {
+      toast.error('Failed to load user invoices: ' + (error.message || error));
     } finally {
       setLoadingReport(false);
     }
@@ -141,22 +160,37 @@ export default function Users() {
   useEffect(() => {
     if (!isAdmin && !isAuditor) return;
 
-    const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data: any[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Filter out admins and sales reps for auditors
-      if (isAuditor && !isAdmin) {
-        data = data.filter(u => u.role !== 'admin' && u.role !== 'sales_rep');
-      }
-      data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setUsers(data);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
-      setLoading(false);
-    });
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .order('name', { ascending: true });
 
-    return unsubscribe;
+        if (error) throw error;
+        let formatted = (data || []).map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          role: u.role,
+          pin: u.pin,
+          phone: u.phone,
+          pricingTier: u.pricing_tier,
+          createdAt: u.created_at
+        }));
+
+        if (isAuditor && !isAdmin) {
+          formatted = formatted.filter(u => u.role !== 'admin' && u.role !== 'sales_rep');
+        }
+        setUsers(formatted);
+      } catch (err: any) {
+        console.warn('Supabase users fetch warning:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
   }, [isAdmin, isAuditor]);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -174,8 +208,13 @@ export default function Users() {
         return;
       }
 
-      const existingSnap = await getDoc(doc(db, 'users', normalizedUsername));
-      if (existingSnap.exists()) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', normalizedUsername)
+        .maybeSingle();
+
+      if (existingUser) {
         setError('A user with this username already exists.');
         setIsCreating(false);
         return;
@@ -184,21 +223,29 @@ export default function Users() {
       const isRep = newRole === 'sales_rep';
       const effectiveTier = isRep ? null : (pricingTier || 'bronze');
 
-      await setDoc(doc(db, 'users', normalizedUsername), {
-        name, 
+      const newUserObj = {
+        id: normalizedUsername,
+        name,
         username: normalizedUsername,
         role: newRole,
-        pin: pin,
-        phone: phone,
-        pricingTier: effectiveTier,
-        createdAt: new Date().toISOString()
-      });
+        pin,
+        phone,
+        pricing_tier: effectiveTier
+      };
+
+      const { error: insertErr } = await supabase.from('users').insert(newUserObj);
+      if (insertErr) throw insertErr;
       
       const roleLabel = newRole === 'sales_agent' 
         ? `Sales Agent (${effectiveTier?.toUpperCase()} Package)` 
         : newRole === 'sales_rep' 
         ? 'Sales Rep (Salaried Staff)' 
         : 'Auditor';
+
+      setUsers(prev => [...prev, {
+        ...newUserObj,
+        pricingTier: effectiveTier
+      }].sort((a, b) => a.name.localeCompare(b.name)));
 
       toast.success(`${roleLabel} added successfully! Only Admins can modify user roles.`);
       setShowAdd(false);

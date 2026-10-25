@@ -20,8 +20,7 @@ import {
   Search,
   Filter
 } from 'lucide-react';
-import { collection, query, onSnapshot, doc, setDoc, updateDoc, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { getWeekInfo, shiftWeek, getRecentWeeksList, isDateInWeek, WeekInfo } from '../lib/dateUtils';
@@ -61,53 +60,91 @@ export default function WeeklyAudit() {
   // Recent weeks for dropdown
   const recentWeeks = useMemo(() => getRecentWeeksList(16), []);
 
-  // 1. Subscribe to invoices
+  // 1. Fetch invoices from Supabase
   useEffect(() => {
     if (!user) return;
-    const qInvoices = query(collection(db, 'invoices'));
-    const unsubInvoices = onSnapshot(qInvoices, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setInvoices(data);
-      setLoading(false);
-    }, (err) => {
-      console.error("Error loading invoices:", err);
-      setLoading(false);
-    });
-
-    return unsubInvoices;
+    const fetchInvoices = async () => {
+      try {
+        const { data, error } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        const formatted = (data || []).map((inv: any) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoice_number,
+          clientName: inv.client_name,
+          clientAddress: inv.client_address,
+          clientEmail: inv.client_email,
+          clientPhone: inv.client_phone,
+          items: inv.items,
+          subtotal: Number(inv.subtotal || 0),
+          vatRate: Number(inv.vat_rate || 0),
+          vatAmount: Number(inv.vat_amount || 0),
+          grandTotal: Number(inv.grand_total || 0),
+          wholesaleTotal: Number(inv.wholesale_total || 0),
+          profitTotal: Number(inv.profit_total || 0),
+          currency: inv.currency,
+          status: inv.status,
+          profitStatus: inv.profit_status,
+          proofOfPayment: inv.proof_of_payment,
+          proofOfPaymentId: inv.proof_of_payment_id,
+          proofOfPaymentName: inv.proof_of_payment_name,
+          proofNote: inv.proof_note,
+          auditStatus: inv.audit_status,
+          auditorVerified: inv.auditor_verified,
+          createdBy: inv.created_by,
+          createdByEmail: inv.created_by_email,
+          issueDate: inv.issue_date,
+          dueDate: inv.due_date,
+          createdAt: inv.created_at
+        }));
+        setInvoices(formatted);
+      } catch (err) {
+        console.warn("Error loading invoices from Supabase:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInvoices();
   }, [user]);
 
-  // 2. Subscribe to weekly_audits
+  // 2. Fetch weekly_audits from Supabase
   useEffect(() => {
     if (!user) return;
-    const qAudits = query(collection(db, 'weekly_audits'));
-    const unsubAudits = onSnapshot(qAudits, (snap) => {
-      const auditsMap: Record<string, any> = {};
-      snap.docs.forEach(d => {
-        auditsMap[d.id] = { id: d.id, ...d.data() };
-      });
-      setWeeklyAudits(auditsMap);
-    }, (err) => {
-      console.error("Error loading weekly audits:", err);
-    });
-
-    return unsubAudits;
+    const fetchAudits = async () => {
+      try {
+        const { data, error } = await supabase.from('weekly_audits').select('*');
+        if (error) throw error;
+        const auditsMap: Record<string, any> = {};
+        (data || []).forEach(d => {
+          auditsMap[d.week_key] = { id: d.week_key, ...d };
+        });
+        setWeeklyAudits(auditsMap);
+      } catch (err) {
+        console.warn("Error loading audits from Supabase:", err);
+      }
+    };
+    fetchAudits();
   }, [user]);
 
-  // 3. Load sales reps & agents
+  // 3. Load sales reps & agents from Supabase
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const snap = await getDocs(collection(db, 'users'));
-        const uList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const { data, error } = await supabase.from('users').select('*');
+        if (error) throw error;
+        let uList = (data || []).map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          role: u.role,
+          pricingTier: u.pricing_tier
+        }));
         if (isAuditor) {
-          // Auditor should NOT have access to sales reps (auditor audits Sales Agents only)
           setUsers(uList.filter((u: any) => u.role !== 'sales_rep' && u.role !== 'admin' && u.role !== 'auditor'));
         } else {
           setUsers(uList.filter((u: any) => u.role !== 'admin' && u.role !== 'auditor'));
         }
       } catch (err) {
-        console.error("Error fetching users:", err);
+        console.warn("Error fetching users from Supabase:", err);
       }
     };
     fetchUsers();
@@ -297,12 +334,15 @@ export default function WeeklyAudit() {
     try {
       const newVerified = !inv.auditorVerified;
       const auditorName = user?.name || user?.username || 'Auditor';
-      await updateDoc(doc(db, 'invoices', inv.id), {
-        auditorVerified: newVerified,
-        auditorVerifiedAt: newVerified ? new Date().toISOString() : '',
-        auditorVerifiedBy: newVerified ? auditorName : '',
-        proofLocked: newVerified
-      });
+      
+      await supabase.from('invoices').update({
+        auditor_verified: newVerified
+      }).eq('id', inv.id);
+
+
+
+      setInvoices(prev => prev.map(item => item.id === inv.id ? { ...item, auditorVerified: newVerified } : item));
+
       if (viewingProof?.id === inv.id) {
         setViewingProof({ 
           ...viewingProof, 
@@ -337,13 +377,14 @@ export default function WeeklyAudit() {
         return;
       }
 
-      for (const inv of toUpdate) {
-        await updateDoc(doc(db, 'invoices', inv.id), {
-          auditorVerified: true,
-          auditorVerifiedAt: now,
-          auditorVerifiedBy: by
-        });
-      }
+      const idsToUpdate = toUpdate.map(inv => inv.id);
+      await supabase.from('invoices').update({
+        auditor_verified: true
+      }).in('id', idsToUpdate);
+
+
+
+      setInvoices(prev => prev.map(item => idsToUpdate.includes(item.id) ? { ...item, auditorVerified: true } : item));
       toast.success(`All ${toUpdate.length} qualifying invoices marked as Match Verified!`);
     } catch (err: any) {
       toast.error('Failed to verify all: ' + (err.message || 'Error'));
@@ -427,29 +468,17 @@ export default function WeeklyAudit() {
         if (!rep) continue;
         const repKey = rep.username;
         const repInvs = allWeekInvoices.filter(i => i.createdBy === repKey);
+        const repInvIds = repInvs.map(i => i.id);
 
-        for (const inv of repInvs) {
-          await updateDoc(doc(db, 'invoices', inv.id), {
-            auditStatus: 'cleared',
-            profitStatus: 'cleared',
-            auditClearedAt: now,
-            auditClearedBy: by,
-            auditWeekKey: selectedWeek.weekKey,
-            auditorVerified: true,
-            isLocked: true,
-            proofLocked: true
-          });
+        if (repInvIds.length > 0) {
+          await supabase.from('invoices').update({
+            audit_status: 'cleared',
+            profit_status: 'cleared',
+            auditor_verified: true
+          }).in('id', repInvIds);
         }
 
-        try {
-          await updateDoc(doc(db, 'users', repKey), {
-            lastAuditedAt: now,
-            lastAuditedBy: by,
-            lastAuditedWeek: selectedWeek.weekKey
-          });
-        } catch {
-          // Silently proceed if user doc key differs
-        }
+
 
         const existingRepAudit = updatedRepsMap[repKey] || {};
         updatedRepsMap[repKey] = {
@@ -473,23 +502,47 @@ export default function WeeklyAudit() {
         r.isCleared || repsToClear.some(tc => tc.username === r.username)
       );
 
-      await setDoc(doc(db, 'weekly_audits', auditDocId), {
-        weekKey: selectedWeek.weekKey,
-        weekNum: selectedWeek.weekNum,
-        year: selectedWeek.year,
-        startStr: selectedWeek.startStr,
-        endStr: selectedWeek.endStr,
-        label: selectedWeek.label,
+      await supabase.from('weekly_audits').upsert({
+        week_key: auditDocId,
         status: allNowCleared ? 'cleared' : 'partially_cleared',
-        updatedAt: now,
-        lastClearedBy: by,
-        lastClearedAt: now,
-        totalSales,
-        totalWholesale,
-        totalCommission,
-        invoiceCount: allWeekInvoices.length,
+        auditor_note: auditorNote.trim(),
+        updated_at: now,
         reps: updatedRepsMap
-      }, { merge: true });
+      });
+
+
+
+      // Update local state immediately
+      setWeeklyAudits(prev => ({
+        ...prev,
+        [auditDocId]: {
+          ...(prev[auditDocId] || {}),
+          id: auditDocId,
+          week_key: auditDocId,
+          status: allNowCleared ? 'cleared' : 'partially_cleared',
+          auditor_note: auditorNote.trim(),
+          updated_at: now,
+          reps: updatedRepsMap
+        }
+      }));
+
+      const allClearedInvIds = new Set<string>();
+      repsToClear.forEach(rep => {
+        if (!rep) return;
+        allWeekInvoices.filter(i => i.createdBy === rep.username).forEach(i => allClearedInvIds.add(i.id));
+      });
+
+      setInvoices(prev => prev.map(inv => {
+        if (allClearedInvIds.has(inv.id)) {
+          return {
+            ...inv,
+            auditStatus: 'cleared',
+            profitStatus: 'cleared',
+            auditorVerified: true
+          };
+        }
+        return inv;
+      }));
 
       if (selectedRepForAction === 'all') {
         toast.success(`All active sales reps for Week ${selectedWeek.weekNum} marked as CLEARED!`);
@@ -525,14 +578,15 @@ export default function WeeklyAudit() {
         if (!rep) continue;
         const repKey = rep.username;
         const repInvs = allWeekInvoices.filter(i => i.createdBy === repKey);
+        const repInvIds = repInvs.map(i => i.id);
 
-        for (const inv of repInvs) {
-          await updateDoc(doc(db, 'invoices', inv.id), {
-            profitStatus: 'paid',
-            commissionPaidAt: now,
-            commissionPaidBy: by
-          });
+        if (repInvIds.length > 0) {
+          await supabase.from('invoices').update({
+            profit_status: 'paid'
+          }).in('id', repInvIds);
         }
+
+
 
         const existingRepAudit = updatedRepsMap[repKey] || {};
         updatedRepsMap[repKey] = {
@@ -552,14 +606,45 @@ export default function WeeklyAudit() {
         r.isCommissionPaid || repsToPay.some(tp => tp.username === r.username)
       );
 
-      await setDoc(doc(db, 'weekly_audits', auditDocId), {
-        commissionStatus: allNowPaid ? 'paid' : 'partially_paid',
+      await supabase.from('weekly_audits').upsert({
+        week_key: auditDocId,
+        commission_paid_note: payoutRefNote.trim(),
         status: allNowPaid ? 'commission_paid' : 'partially_cleared',
-        lastCommissionPaidAt: now,
-        lastCommissionPaidBy: by,
-        updatedAt: now,
+        updated_at: now,
         reps: updatedRepsMap
-      }, { merge: true });
+      });
+
+
+
+      // Update local state immediately
+      setWeeklyAudits(prev => ({
+        ...prev,
+        [auditDocId]: {
+          ...(prev[auditDocId] || {}),
+          id: auditDocId,
+          week_key: auditDocId,
+          commission_paid_note: payoutRefNote.trim(),
+          status: allNowPaid ? 'commission_paid' : 'partially_cleared',
+          updated_at: now,
+          reps: updatedRepsMap
+        }
+      }));
+
+      const allPaidInvIds = new Set<string>();
+      repsToPay.forEach(rep => {
+        if (!rep) return;
+        allWeekInvoices.filter(i => i.createdBy === rep.username).forEach(i => allPaidInvIds.add(i.id));
+      });
+
+      setInvoices(prev => prev.map(inv => {
+        if (allPaidInvIds.has(inv.id)) {
+          return {
+            ...inv,
+            profitStatus: 'paid'
+          };
+        }
+        return inv;
+      }));
 
       if (selectedRepForAction === 'all') {
         toast.success(`Commissions for all cleared reps marked as PAID!`);

@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import { uploadFileToGoogleDrive, compressFileToDataUrl } from '../lib/drive';
+import { compressImage } from '../lib/imageCompressor';
 import { Trash2, Edit2, Search, Download, Tag, ArrowUpDown, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Image as ImageIcon, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportToCSV } from '../lib/utils';
@@ -50,38 +49,45 @@ export default function PriceList() {
   useEffect(() => {
     if (!user) return;
     
-    // 1. Load from localStorage cache immediately if available
-    const cachedProducts = localStorage.getItem('gcis_cached_products');
-    if (cachedProducts) {
-      try {
-        const parsed = JSON.parse(cachedProducts);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setItems(parsed);
-          setLoading(false);
-        }
-      } catch {}
-    }
+    // Purge old oversized local storage cache to permanently free user browser space
+    try {
+      localStorage.removeItem('gcis_cached_products');
+    } catch {}
 
-    // 2. Fetch fresh list once (using getDocs instead of live onSnapshot to save quota)
-    const fetchProductsOnce = async () => {
+    // Fetch fresh product list directly from Supabase (sub-millisecond indexed queries, unlimited reads)
+    const fetchProducts = async () => {
       try {
-        const q = query(collection(db, 'products'), orderBy('name', 'asc'));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (data.length > 0) {
-          setItems(data);
-          localStorage.setItem('gcis_cached_products', JSON.stringify(data));
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const formatted = data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            category: p.category,
+            price: Number(p.price || 0),
+            wholesalePriceBronze: p.wholesale_price_bronze !== null ? Number(p.wholesale_price_bronze) : null,
+            wholesalePriceSilver: p.wholesale_price_silver !== null ? Number(p.wholesale_price_silver) : null,
+            wholesalePriceGold: p.wholesale_price_gold !== null ? Number(p.wholesale_price_gold) : null,
+            available: p.available !== false,
+            imageUrl: p.image_url || '',
+            createdAt: p.created_at
+          }));
+          setItems(formatted);
         }
-      } catch (error) {
-        if (!handleFirestoreError(error, OperationType.LIST, 'products')) {
-          console.warn('Using cached products due to quota limit.');
-        }
+      } catch (error: any) {
+        console.warn('Supabase product fetch warning:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProductsOnce();
+    fetchProducts();
   }, [user]);
 
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,15 +95,22 @@ export default function PriceList() {
     if (!file) return;
     setUploadingImage(true);
     try {
+      // 1. Automatically compress the product picture to ultra-compact WebP (< 40KB)
+      const compressed = await compressImage(file, {
+        maxWidth: 500,
+        maxHeight: 500,
+        initialQuality: 0.58,
+        maxSizeBytes: 40 * 1024
+      });
+
       try {
-        const result = await uploadFileToGoogleDrive(file);
+        const result = await uploadFileToGoogleDrive(compressed.file);
         setImageUrl(result.webViewLink || result.thumbnailLink || '');
-        toast.success('Product image uploaded to Company Google Drive successfully!');
+        toast.success(`Product image compressed (${compressed.savingsPercent}% saved) and uploaded to Google Drive!`);
       } catch (driveErr) {
-        // Fallback to high-quality compressed image stored directly
-        const dataUrl = await compressFileToDataUrl(file);
-        setImageUrl(dataUrl);
-        toast.success('Product image processed and saved securely!');
+        // Fallback to high-quality compressed image stored directly in database
+        setImageUrl(compressed.dataUrl);
+        toast.success(`Product image compressed (${compressed.savingsPercent}% saved) and saved securely!`);
       }
     } catch (error: any) {
       toast.error('Failed to upload image: ' + (error.message || error));
@@ -115,50 +128,81 @@ export default function PriceList() {
     }
     try {
       const id = editId || `item_${Date.now()}`;
-      const itemData: any = {
+      const supaData: any = {
+        id,
         name,
         description,
         category: finalCategory,
         price: Number(price),
         available: available,
-        imageUrl: imageUrl.trim() || null,
-        updatedAt: new Date().toISOString(),
-        createdBy: user?.username
+        image_url: imageUrl.trim() || null,
+        wholesale_price_bronze: wholesalePriceBronze !== '' ? Number(wholesalePriceBronze) : null,
+        wholesale_price_silver: wholesalePriceSilver !== '' ? Number(wholesalePriceSilver) : null,
+        wholesale_price_gold: wholesalePriceGold !== '' ? Number(wholesalePriceGold) : null,
       };
-      if (wholesalePriceBronze !== '') itemData.wholesalePriceBronze = Number(wholesalePriceBronze);
-      else itemData.wholesalePriceBronze = null;
-      if (wholesalePriceSilver !== '') itemData.wholesalePriceSilver = Number(wholesalePriceSilver);
-      else itemData.wholesalePriceSilver = null;
-      if (wholesalePriceGold !== '') itemData.wholesalePriceGold = Number(wholesalePriceGold);
-      else itemData.wholesalePriceGold = null;
-      await setDoc(doc(db, 'products', id), itemData, { merge: true });
-      
+
+      const { error: supaErr } = await supabase.from('products').upsert(supaData);
+      if (supaErr) throw supaErr;
+
+      // Update local state and cache immediately
+      const newItem = {
+        id,
+        name,
+        description,
+        category: finalCategory,
+        price: Number(price),
+        available,
+        imageUrl: imageUrl.trim() || '',
+        wholesalePriceBronze: supaData.wholesale_price_bronze,
+        wholesalePriceSilver: supaData.wholesale_price_silver,
+        wholesalePriceGold: supaData.wholesale_price_gold
+      };
+
+      setItems(prev => {
+        const existingIdx = prev.findIndex(p => p.id === id);
+        let next;
+        if (existingIdx >= 0) {
+          next = [...prev];
+          next[existingIdx] = newItem;
+        } else {
+          next = [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name));
+        }
+        return next;
+      });
+
       toast.success(editId ? 'Item updated successfully' : 'Item added successfully');
       resetForm();
-    } catch (error) {
-      if (!handleFirestoreError(error, OperationType.CREATE, 'products')) toast.error('Failed to save item');
+    } catch (error: any) {
+      toast.error('Failed to save item: ' + (error.message || error));
     }
   };
 
   const handleToggleAvailability = async (id: string, newAvailable: boolean) => {
     try {
-      await setDoc(doc(db, 'products', id), {
-        available: newAvailable,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      const { error } = await supabase
+        .from('products')
+        .update({ available: newAvailable })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setItems(prev => prev.map(p => p.id === id ? { ...p, available: newAvailable } : p));
       toast.success(newAvailable ? 'Marked as Available' : 'Marked as Out of Stock');
-    } catch (error) {
-      if (!handleFirestoreError(error, OperationType.UPDATE, `products/${id}`)) toast.error('Failed to update availability');
+    } catch (error: any) {
+      toast.error('Failed to update availability: ' + (error.message || error));
     }
   };
 
   const deleteItem = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
-        await deleteDoc(doc(db, 'products', id));
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+
+        setItems(prev => prev.filter(p => p.id !== id));
         toast.success('Item deleted successfully');
-      } catch (error) {
-        if (!handleFirestoreError(error, OperationType.DELETE, `products/${id}`)) toast.error('Failed to delete item');
+      } catch (error: any) {
+        toast.error('Failed to delete item: ' + (error.message || error));
       }
     }
   };

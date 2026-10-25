@@ -1,6 +1,6 @@
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, browserPopupRedirectResolver } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import { auth } from '../firebase';
+import { supabase } from '../supabase';
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
@@ -16,15 +16,15 @@ export const initDriveAuth = (
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else {
         try {
-          const snap = await getDoc(doc(db, 'settings', 'company'));
-          if (snap.exists() && snap.data().driveAccessToken) {
-            cachedAccessToken = snap.data().driveAccessToken;
+          const { data: setRow } = await supabase.from('settings').select('*').eq('key', 'company').maybeSingle();
+          if (setRow && setRow.value && setRow.value.driveAccessToken) {
+            cachedAccessToken = setRow.value.driveAccessToken;
             tokenLoadedFromFirestore = true;
             if (onAuthSuccess && cachedAccessToken) onAuthSuccess(user, cachedAccessToken);
             return;
           }
-        } catch (e) {
-          console.error("Error loading drive token from settings:", e);
+        } catch {
+          // Silent fallback
         }
         if (onAuthFailure) onAuthFailure();
       }
@@ -53,15 +53,23 @@ export const googleDriveSignIn = async (): Promise<{ user: User; accessToken: st
     cachedAccessToken = credential.accessToken;
     tokenLoadedFromFirestore = true;
 
-    // Save token and connection metadata to company settings in Firestore
+    // Save token and connection metadata to company settings in Supabase
     try {
-      await setDoc(doc(db, 'settings', 'company'), {
+      const { data: curSetting } = await supabase.from('settings').select('value').eq('key', 'company').maybeSingle();
+      const curValue = curSetting?.value || {};
+      const updatedValue = {
+        ...curValue,
         driveAccessToken: cachedAccessToken,
         driveConnectedBy: result.user.email || result.user.displayName || 'Company Admin',
         driveConnectedAt: new Date().toISOString()
-      }, { merge: true });
+      };
+      await supabase.from('settings').upsert({
+        key: 'company',
+        value: updatedValue,
+        updated_at: new Date().toISOString()
+      });
     } catch (err) {
-      console.error("Failed to persist drive token to company settings:", err);
+      console.error("Failed to persist drive token to Supabase settings:", err);
     }
 
     return { user: result.user, accessToken: cachedAccessToken };
@@ -76,83 +84,26 @@ export const googleDriveSignIn = async (): Promise<{ user: User; accessToken: st
 export const getDriveAccessToken = async (): Promise<string | null> => {
   if (cachedAccessToken) return cachedAccessToken;
   try {
-    const snap = await getDoc(doc(db, 'settings', 'company'));
-    if (snap.exists() && snap.data().driveAccessToken) {
-      cachedAccessToken = snap.data().driveAccessToken;
-      tokenLoadedFromFirestore = true;
+    const { data } = await supabase.from('settings').select('value').eq('key', 'company').maybeSingle();
+    if (data?.value?.driveAccessToken) {
+      cachedAccessToken = data.value.driveAccessToken;
       return cachedAccessToken;
     }
   } catch (e) {
-    console.error("Error fetching drive token:", e);
+    console.error("Error fetching drive token from Supabase:", e);
   }
   return null;
 };
 
+import { compressImage } from './imageCompressor';
+
 /**
- * Compresses an image file into a compact WebP/JPEG data URL (< 150KB)
- * for instant, permanent, offline-capable storage directly in Firestore.
+ * Compresses an image file into an ultra-compact WebP data URL (< 50KB)
+ * for instant, permanent, low-footprint storage.
  */
-export const compressFileToDataUrl = (file: File, maxDim = 600, quality = 0.6): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const isPdfFile = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    if (!file.type.startsWith('image/') || isPdfFile) {
-      // Fallback for PDF or other documents
-      const reader = new FileReader();
-      reader.onload = () => {
-        let res = reader.result as string;
-        if (isPdfFile && !res.startsWith('data:application/pdf')) {
-          res = res.replace(/^data:[^;]*;/, 'data:application/pdf;');
-        }
-        resolve(res);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(e.target?.result as string);
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        // Attempt webp compression, fall back to jpeg
-        try {
-          const webpData = canvas.toDataURL('image/webp', quality);
-          if (webpData.startsWith('data:image/webp')) {
-            resolve(webpData);
-            return;
-          }
-        } catch {}
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => resolve(e.target?.result as string);
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+export const compressFileToDataUrl = async (file: File, maxDim = 550, quality = 0.58): Promise<string> => {
+  const result = await compressImage(file, { maxWidth: maxDim, maxHeight: maxDim, initialQuality: quality, maxSizeBytes: 50 * 1024 });
+  return result.dataUrl;
 };
 
 /**
@@ -166,9 +117,20 @@ export const uploadFileToGoogleDrive = async (
     throw new Error('Google Drive is not connected.');
   }
 
+  // Automatically compress images before upload to save space
+  let fileToUpload = file;
+  if (file.type.startsWith('image/') && file.size > 60 * 1024) {
+    try {
+      const res = await compressImage(file, { maxWidth: 750, maxHeight: 950, initialQuality: 0.58, maxSizeBytes: 50 * 1024 });
+      fileToUpload = res.file;
+    } catch {
+      fileToUpload = file;
+    }
+  }
+
   const metadata = {
-    name: `GCIS_${Date.now()}_${file.name}`,
-    mimeType: file.type || 'application/pdf',
+    name: `GCIS_${Date.now()}_${fileToUpload.name}`,
+    mimeType: fileToUpload.type || 'application/pdf',
   };
 
   // 1. Initiate resumable session
@@ -179,8 +141,8 @@ export const uploadFileToGoogleDrive = async (
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json; charset=UTF-8',
-        'X-Upload-Content-Type': file.type || 'application/pdf',
-        'X-Upload-Content-Length': file.size.toString(),
+        'X-Upload-Content-Type': fileToUpload.type || 'application/pdf',
+        'X-Upload-Content-Length': fileToUpload.size.toString(),
       },
       body: JSON.stringify(metadata),
     }
@@ -243,31 +205,39 @@ export const processProofOfPayment = async (
   storageType: 'drive' | 'direct';
   fileName: string;
 }> => {
-  // Always create an instant compressed copy
-  const localDataUrl = await compressFileToDataUrl(file);
+  // Ultra-compact automatic compression: cuts 3-10MB mobile uploads to < 50KB WebP
+  const compressionResult = await compressImage(file, {
+    maxWidth: 750,
+    maxHeight: 950,
+    initialQuality: 0.58,
+    maxSizeBytes: 50 * 1024
+  });
+
+  const localDataUrl = compressionResult.dataUrl;
+  const fileToUpload = compressionResult.file;
 
   // Check if Drive is available
   const token = await getDriveAccessToken();
   if (token) {
     try {
-      const driveResult = await uploadFileToGoogleDrive(file);
+      const driveResult = await uploadFileToGoogleDrive(fileToUpload);
       return {
         url: driveResult.webViewLink || localDataUrl,
         id: driveResult.fileId,
         storageType: 'drive',
-        fileName: file.name
+        fileName: fileToUpload.name
       };
     } catch (driveErr) {
       console.warn('Drive upload failed, falling back to direct permanent storage:', driveErr);
     }
   }
 
-  // Graceful fallback: Store compressed receipt directly in Firestore document
+  // Graceful fallback: Store compact compressed receipt directly in Supabase document
   return {
     url: localDataUrl,
     id: `local_${Date.now()}`,
     storageType: 'direct',
-    fileName: file.name
+    fileName: fileToUpload.name
   };
 };
 
@@ -293,20 +263,18 @@ export const dataUrlToFile = (dataUrl: string, filename: string): File => {
  */
 export const getPendingSyncCounts = async (): Promise<{ receipts: number; products: number; total: number }> => {
   try {
-    const invSnap = await getDocs(collection(db, 'invoices'));
+    const { data: invs } = await supabase.from('invoices').select('id, proof_of_payment');
     let receipts = 0;
-    invSnap.forEach((d) => {
-      const data = d.data();
-      if (data.proofOfPayment && typeof data.proofOfPayment === 'string' && data.proofOfPayment.startsWith('data:')) {
+    (invs || []).forEach((inv: any) => {
+      if (inv.proof_of_payment && typeof inv.proof_of_payment === 'string' && inv.proof_of_payment.startsWith('data:')) {
         receipts++;
       }
     });
 
-    const prodSnap = await getDocs(collection(db, 'products'));
+    const { data: prods } = await supabase.from('products').select('id, image_url');
     let products = 0;
-    prodSnap.forEach((d) => {
-      const data = d.data();
-      if (data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.startsWith('data:')) {
+    (prods || []).forEach((prod: any) => {
+      if (prod.image_url && typeof prod.image_url === 'string' && prod.image_url.startsWith('data:')) {
         products++;
       }
     });
@@ -318,7 +286,7 @@ export const getPendingSyncCounts = async (): Promise<{ receipts: number; produc
 };
 
 /**
- * Scans all invoices and products in Firestore. Any that were stored directly as
+ * Scans all invoices and products in Supabase. Any that were stored directly as
  * Data URLs while Google Drive was disconnected are automatically uploaded to Google Drive,
  * and the database documents are updated with the official Google Drive links.
  */
@@ -330,23 +298,21 @@ export const syncAllPendingFilesToDrive = async (
     throw new Error('Google Drive is not connected. Please connect Google Drive first.');
   }
 
-  // 1. Gather pending invoices
-  const invSnap = await getDocs(collection(db, 'invoices'));
+  // 1. Gather pending invoices from Supabase
+  const { data: invRows } = await supabase.from('invoices').select('*');
   const pendingInvoices: any[] = [];
-  invSnap.forEach((d) => {
-    const data = d.data();
-    if (data.proofOfPayment && typeof data.proofOfPayment === 'string' && data.proofOfPayment.startsWith('data:')) {
-      pendingInvoices.push({ id: d.id, ...data });
+  (invRows || []).forEach((inv: any) => {
+    if (inv.proof_of_payment && typeof inv.proof_of_payment === 'string' && inv.proof_of_payment.startsWith('data:')) {
+      pendingInvoices.push(inv);
     }
   });
 
-  // 2. Gather pending products
-  const prodSnap = await getDocs(collection(db, 'products'));
+  // 2. Gather pending products from Supabase
+  const { data: prodRows } = await supabase.from('products').select('*');
   const pendingProducts: any[] = [];
-  prodSnap.forEach((d) => {
-    const data = d.data();
-    if (data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.startsWith('data:')) {
-      pendingProducts.push({ id: d.id, ...data });
+  (prodRows || []).forEach((prod: any) => {
+    if (prod.image_url && typeof prod.image_url === 'string' && prod.image_url.startsWith('data:')) {
+      pendingProducts.push(prod);
     }
   });
 
@@ -359,18 +325,21 @@ export const syncAllPendingFilesToDrive = async (
   for (const inv of pendingInvoices) {
     processed++;
     if (onProgress) {
-      onProgress(processed, total, `Invoice ${inv.invoiceNumber || inv.id}`);
+      onProgress(processed, total, `Invoice ${inv.invoice_number || inv.id}`);
     }
     try {
-      const fileName = inv.proofOfPaymentName || `receipt_${inv.invoiceNumber || inv.id}.jpg`;
-      const file = dataUrlToFile(inv.proofOfPayment, fileName);
+      const fileName = inv.proof_of_payment_name || `receipt_${inv.invoice_number || inv.id}.jpg`;
+      const file = dataUrlToFile(inv.proof_of_payment, fileName);
       const driveRes = await uploadFileToGoogleDrive(file);
-      await updateDoc(doc(db, 'invoices', inv.id), {
-        proofOfPayment: driveRes.webViewLink || driveRes.thumbnailLink,
-        proofOfPaymentId: driveRes.fileId,
-        proofStorageType: 'drive',
-        syncedToDriveAt: new Date().toISOString()
-      });
+      const link = driveRes.webViewLink || driveRes.thumbnailLink;
+      
+      await supabase.from('invoices').update({
+        proof_of_payment: link,
+        proof_of_payment_id: driveRes.fileId
+      }).eq('id', inv.id);
+
+
+
       synced++;
     } catch (e) {
       console.error(`Failed to sync invoice ${inv.id} to Drive:`, e);
@@ -386,13 +355,16 @@ export const syncAllPendingFilesToDrive = async (
     }
     try {
       const fileName = `product_${prod.id}.jpg`;
-      const file = dataUrlToFile(prod.imageUrl, fileName);
+      const file = dataUrlToFile(prod.image_url, fileName);
       const driveRes = await uploadFileToGoogleDrive(file);
-      await updateDoc(doc(db, 'products', prod.id), {
-        imageUrl: driveRes.webViewLink || driveRes.thumbnailLink,
-        driveImageId: driveRes.fileId,
-        syncedToDriveAt: new Date().toISOString()
-      });
+      const link = driveRes.webViewLink || driveRes.thumbnailLink;
+
+      await supabase.from('products').update({
+        image_url: link
+      }).eq('id', prod.id);
+
+
+
       synced++;
     } catch (e) {
       console.error(`Failed to sync product ${prod.id} to Drive:`, e);

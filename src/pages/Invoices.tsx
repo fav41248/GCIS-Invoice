@@ -1,9 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Trash2, Search, Download, FileText, ChevronLeft, ChevronRight, ArrowUpDown, X, Edit2, AlertTriangle, Check, Upload, ShieldCheck, ExternalLink } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, where, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
 import { exportToCSV } from '../lib/utils';
@@ -50,84 +48,114 @@ export default function Invoices() {
     );
   }, []);
 
-  // Subscribe to weekly audits to track audited sales reps and periods
+  // Fetch weekly audits to track audited sales reps and periods
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'weekly_audits'), (snap) => {
-      const map: Record<string, any> = {};
-      snap.docs.forEach(d => {
-        map[d.id] = d.data();
-      });
-      setWeeklyAudits(map);
-    });
-    return unsub;
+    const fetchAudits = async () => {
+      try {
+        const { data, error } = await supabase.from('weekly_audits').select('*');
+        if (error) throw error;
+        const map: Record<string, any> = {};
+        (data || []).forEach((d: any) => {
+          map[d.week_key] = d;
+        });
+        setWeeklyAudits(map);
+      } catch (e) {
+        console.warn('Error fetching audits in Invoices:', e);
+      }
+    };
+    fetchAudits();
   }, []);
 
   // Fetch users map to identify sales reps vs sales agents
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users'), (snap) => {
-      const map: Record<string, { role: string; name: string }> = {};
-      snap.docs.forEach(d => {
-        const data = d.data();
-        map[d.id.toLowerCase()] = {
-          role: data.role || 'sales_agent',
-          name: data.name || d.id
-        };
-      });
-      setUserMap(map);
-    });
-    return unsub;
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase.from('users').select('*');
+        if (error) throw error;
+        const map: Record<string, { role: string; name: string }> = {};
+        (data || []).forEach((u: any) => {
+          const key = (u.username || u.id || '').toLowerCase();
+          map[key] = {
+            role: u.role || 'sales_agent',
+            name: u.name || key
+          };
+        });
+        setUserMap(map);
+      } catch (e) {
+        console.warn('Error fetching users in Invoices:', e);
+      }
+    };
+    fetchUsers();
   }, []);
 
   useEffect(() => {
     if (!user) return;
     
-    const q = query(collection(db, 'invoices'));
+    const fetchInvoices = async () => {
+      try {
+        let query = supabase.from('invoices').select('*').order('created_at', { ascending: false });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      if (!isAdmin && !isAuditor && user?.username) {
-        data = data.filter((inv: any) => inv.createdBy?.toLowerCase() === user.username.toLowerCase());
-      } else if (isAuditor) {
-        // Auditor rules:
-        // 1. Should NOT see invoices that are unpaid (only paid invoices)
-        // 2. Should NOT have access to invoices of sales reps (only sales agents / admin)
-        data = data.filter((inv: any) => {
-          const isPaid = (inv.status || '').toLowerCase() === 'paid';
-          if (!isPaid) return false;
+        if (!isAdmin && !isAuditor && user?.username) {
+          query = query.eq('created_by', user.username);
+        }
 
-          const creatorKey = (inv.createdBy || '').toLowerCase();
-          const creatorInfo = userMap[creatorKey];
-          const isRep = inv.repCategory === 'sales_rep' || creatorInfo?.role === 'sales_rep';
-          if (isRep) return false;
+        const { data, error } = await query;
+        if (error) throw error;
 
-          return true;
-        });
+        let formatted = (data || []).map((inv: any) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoice_number,
+          clientName: inv.client_name,
+          clientAddress: inv.client_address,
+          clientEmail: inv.client_email,
+          clientPhone: inv.client_phone,
+          items: inv.items,
+          subtotal: Number(inv.subtotal || 0),
+          vatRate: Number(inv.vat_rate || 0),
+          vatAmount: Number(inv.vat_amount || 0),
+          grandTotal: Number(inv.grand_total || 0),
+          wholesaleTotal: Number(inv.wholesale_total || 0),
+          profitTotal: Number(inv.profit_total || 0),
+          currency: inv.currency,
+          status: inv.status,
+          profitStatus: inv.profit_status,
+          proofOfPayment: inv.proof_of_payment,
+          proofOfPaymentId: inv.proof_of_payment_id,
+          proofOfPaymentName: inv.proof_of_payment_name,
+          proofNote: inv.proof_note,
+          auditStatus: inv.audit_status,
+          auditorVerified: inv.auditor_verified,
+          createdBy: inv.created_by,
+          createdByEmail: inv.created_by_email,
+          issueDate: inv.issue_date,
+          dueDate: inv.due_date,
+          createdAt: inv.created_at
+        }));
+
+        if (isAuditor) {
+          formatted = formatted.filter((inv: any) => (inv.status || '').toLowerCase() === 'paid');
+        }
+
+        setInvoices(formatted);
+      } catch (error: any) {
+        console.warn('Supabase invoices fetch warning:', error);
+      } finally {
+        setLoading(false);
       }
+    };
 
-      data.sort((a: any, b: any) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
-      });
-
-      setInvoices(data);
-      setLoading(false);
-    }, (error) => {
-      if (!handleFirestoreError(error, OperationType.LIST, 'invoices')) toast.error('Failed to load invoices.');
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    fetchInvoices();
   }, [user, isAdmin, isAuditor, userMap]);
 
   const deleteInvoice = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
       try {
-        await deleteDoc(doc(db, 'invoices', id));
+        const { error } = await supabase.from('invoices').delete().eq('id', id);
+        if (error) throw error;
+        setInvoices(prev => prev.filter(i => i.id !== id));
         toast.success('Invoice deleted successfully');
-      } catch (error) {
-        if (!handleFirestoreError(error, OperationType.DELETE, `invoices/${id}`)) toast.error('Failed to delete invoice');
+      } catch (error: any) {
+        toast.error('Failed to delete invoice: ' + (error.message || error));
       }
     }
   };
@@ -231,16 +259,32 @@ export default function Invoices() {
     setIsSubmittingProof(true);
     try {
       const result = await processProofOfPayment(proofFile);
-      await updateDoc(doc(db, 'invoices', selectedInvoiceForPayment.id), {
+      const updateData = {
         status: 'paid',
-        paidAt: new Date().toISOString(),
+        profit_status: 'confirmed',
+        proof_of_payment: result.url,
+        proof_of_payment_id: result.id,
+        proof_of_payment_name: proofFile.name,
+        proof_note: proofNote
+      };
+
+      const { error: supaErr } = await supabase
+        .from('invoices')
+        .update(updateData)
+        .eq('id', selectedInvoiceForPayment.id);
+
+      if (supaErr) throw supaErr;
+
+      setInvoices(prev => prev.map(inv => inv.id === selectedInvoiceForPayment.id ? {
+        ...inv,
+        status: 'paid',
+        profitStatus: 'confirmed',
         proofOfPayment: result.url,
         proofOfPaymentId: result.id,
         proofOfPaymentName: proofFile.name,
-        proofNote: proofNote,
-        proofStorageType: result.storageType,
-        profitStatus: 'confirmed'
-      });
+        proofNote: proofNote
+      } : inv));
+
       if (result.storageType === 'drive') {
         toast.success('Proof uploaded to Company Google Drive & invoice marked as paid!');
       } else {
@@ -263,7 +307,6 @@ export default function Invoices() {
   const handleUpdateProof = async (inv: any, file: File | null, note: string) => {
     if (!inv) return;
 
-    // Security restriction: After a sales rep has been audited, restrict editing proof
     if (!isAdmin && isInvoiceAudited(inv)) {
       toast.error('Restricted: After a sales rep has been audited, they are restricted from editing the payment proof.');
       return;
@@ -271,25 +314,30 @@ export default function Invoices() {
 
     try {
       const updatePayload: any = {
-        proofNote: note.trim(),
-        updatedAt: new Date().toISOString()
+        proof_note: note.trim()
       };
 
       if (file) {
         const result = await processProofOfPayment(file);
-        updatePayload.proofOfPayment = result.url;
-        updatePayload.proofOfPaymentId = result.id;
-        updatePayload.proofOfPaymentName = file.name;
-        updatePayload.proofStorageType = result.storageType;
+        updatePayload.proof_of_payment = result.url;
+        updatePayload.proof_of_payment_id = result.id;
+        updatePayload.proof_of_payment_name = file.name;
       }
 
-      await updateDoc(doc(db, 'invoices', inv.id), updatePayload);
+      const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
+      if (error) throw error;
       
       const updatedProof = {
         ...inv,
-        ...updatePayload
+        proofNote: note.trim(),
+        ...(file ? {
+          proofOfPayment: updatePayload.proof_of_payment,
+          proofOfPaymentId: updatePayload.proof_of_payment_id,
+          proofOfPaymentName: updatePayload.proof_of_payment_name
+        } : {})
       };
       setViewingProof(updatedProof);
+      setInvoices(prev => prev.map(i => i.id === inv.id ? updatedProof : i));
       toast.success('Proof of payment updated successfully!');
     } catch (err: any) {
       toast.error('Failed to update proof: ' + (err.message || 'Error'));
@@ -300,7 +348,6 @@ export default function Invoices() {
   const handleDeleteProof = async (inv: any, markAsUnpaid = false) => {
     if (!inv) return;
 
-    // Security restriction: After a sales rep has been audited, restrict deleting proof
     if (!isAdmin && isInvoiceAudited(inv)) {
       toast.error('Restricted: After a sales rep has been audited, they are restricted from deleting the payment proof.');
       return;
@@ -308,22 +355,29 @@ export default function Invoices() {
 
     try {
       const updatePayload: any = {
-        proofOfPayment: '',
-        proofOfPaymentId: '',
-        proofOfPaymentName: '',
-        proofNote: '',
-        proofStorageType: '',
-        updatedAt: new Date().toISOString()
+        proof_of_payment: '',
+        proof_of_payment_id: '',
+        proof_of_payment_name: '',
+        proof_note: ''
       };
 
       if (markAsUnpaid) {
         updatePayload.status = 'unpaid';
-        updatePayload.paidAt = '';
-        updatePayload.profitStatus = 'unpaid';
+        updatePayload.profit_status = 'unpaid';
       }
 
-      await updateDoc(doc(db, 'invoices', inv.id), updatePayload);
+      const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
+      if (error) throw error;
       
+      setInvoices(prev => prev.map(i => i.id === inv.id ? {
+        ...i,
+        proofOfPayment: '',
+        proofOfPaymentId: '',
+        proofOfPaymentName: '',
+        proofNote: '',
+        ...(markAsUnpaid ? { status: 'unpaid', profitStatus: 'unpaid' } : {})
+      } : i));
+
       toast.success(markAsUnpaid ? 'Proof deleted and invoice marked as unpaid.' : 'Proof of payment deleted.');
       setViewingProof(null);
     } catch (err: any) {
@@ -336,18 +390,18 @@ export default function Invoices() {
     if (!isAuditor && !isAdmin) return;
     try {
       const newVerified = !inv.auditorVerified;
-      const auditorName = user?.name || user?.username || 'Auditor';
-      await updateDoc(doc(db, 'invoices', inv.id), {
-        auditorVerified: newVerified,
-        auditorVerifiedAt: newVerified ? new Date().toISOString() : '',
-        auditorVerifiedBy: newVerified ? auditorName : '',
-        proofLocked: newVerified
-      });
+      const { error } = await supabase.from('invoices').update({
+        auditor_verified: newVerified
+      }).eq('id', inv.id);
+
+      if (error) throw error;
+
       setViewingProof((prev: any) => 
         prev?.id === inv.id 
-          ? { ...prev, auditorVerified: newVerified, auditorVerifiedBy: newVerified ? auditorName : '', proofLocked: newVerified } 
+          ? { ...prev, auditorVerified: newVerified, proofLocked: newVerified } 
           : prev
       );
+      setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, auditorVerified: newVerified } : i));
       toast.success(newVerified ? `Invoice ${inv.invoiceNumber} verified by Auditor` : `Verification removed`);
     } catch (err: any) {
       toast.error('Failed to update verification: ' + (err.message || 'Error'));
@@ -356,12 +410,12 @@ export default function Invoices() {
 
   const markProfitStatus = async (id: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'invoices', id), {
-        profitStatus: newStatus
-      });
+      const { error } = await supabase.from('invoices').update({ profit_status: newStatus }).eq('id', id);
+      if (error) throw error;
+      setInvoices(prev => prev.map(i => i.id === id ? { ...i, profitStatus: newStatus } : i));
       toast.success(`Profit marked as ${newStatus}`);
-    } catch (error) {
-      if (!handleFirestoreError(error, OperationType.UPDATE, `invoices/${id}`)) toast.error('Failed to update profit status');
+    } catch (error: any) {
+      toast.error('Failed to update profit status: ' + (error.message || error));
     }
   };
 

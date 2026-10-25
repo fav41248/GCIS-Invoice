@@ -1,8 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, where } from 'firebase/firestore';
 import { Link, Navigate } from 'react-router-dom';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import { Trash2, Edit2, Search, Download, Users, ChevronLeft, ChevronRight, ArrowUpDown, FilePlus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -33,36 +31,40 @@ export default function Clients() {
   // Load user directory for admin to show Creator name & role
   useEffect(() => {
     if (!isAdmin) return;
-    const unsub = onSnapshot(collection(db, 'users'), (snap) => {
-      const map: Record<string, { name: string; role: string }> = {};
-      snap.docs.forEach(d => {
-        const data = d.data();
-        map[d.id.toLowerCase()] = {
-          name: data.name || d.id,
-          role: data.role || 'sales_agent'
-        };
-      });
-      setUserMap(map);
-    });
-    return unsub;
+    const loadUsers = async () => {
+      const { data } = await supabase.from('users').select('id, name, role');
+      if (data) {
+        const map: Record<string, { name: string; role: string }> = {};
+        data.forEach(d => {
+          map[d.id.toLowerCase()] = {
+            name: d.name || d.id,
+            role: d.role || 'sales_agent'
+          };
+        });
+        setUserMap(map);
+      }
+    };
+    loadUsers();
   }, [isAdmin]);
 
   useEffect(() => {
     if (!user) return;
-    const clientsRef = collection(db, 'clients');
-    const q = isAdmin 
-      ? query(clientsRef) 
-      : query(clientsRef, where('createdBy', '==', user.username));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClients(data);
-      setLoading(false);
-    }, (error) => {
-      if (!handleFirestoreError(error, OperationType.LIST, 'clients')) toast.error('Failed to load clients.');
-      setLoading(false);
-    });
-    return unsubscribe;
+    const fetchClients = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('clients')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+        setClients(data || []);
+      } catch (error: any) {
+        console.warn('Supabase clients fetch error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchClients();
   }, [user, isAdmin]);
 
   const saveClient = async (e: React.FormEvent) => {
@@ -70,36 +72,43 @@ export default function Clients() {
     try {
       const id = editId || `client_${Date.now()}`;
       const payload: any = {
+        id,
         name,
         email,
         phone,
-        address,
-        updatedAt: new Date().toISOString()
+        address
       };
-      
-      if (!editId) {
-        payload.createdBy = user?.username;
-        payload.createdByRole = user?.role || 'sales_agent';
-        payload.createdByName = user?.name || user?.username;
-        payload.createdAt = new Date().toISOString();
-      }
 
-      await setDoc(doc(db, 'clients', id), payload, { merge: true });
+      const { error } = await supabase.from('clients').upsert(payload);
+      if (error) throw error;
       
+      setClients(prev => {
+        const idx = prev.findIndex(c => c.id === id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...prev[idx], ...payload };
+          return next;
+        }
+        return [...prev, payload].sort((a, b) => a.name.localeCompare(b.name));
+      });
+
       toast.success(editId ? 'Client updated successfully' : 'Client added successfully');
       resetForm();
-    } catch (error) {
-      if (!handleFirestoreError(error, OperationType.CREATE, 'clients')) toast.error('Failed to save client');
+    } catch (error: any) {
+      toast.error('Failed to save client: ' + (error.message || error));
     }
   };
 
   const deleteClient = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this client?')) {
       try {
-        await deleteDoc(doc(db, 'clients', id));
+        const { error } = await supabase.from('clients').delete().eq('id', id);
+        if (error) throw error;
+
+        setClients(prev => prev.filter(c => c.id !== id));
         toast.success('Client deleted successfully');
-      } catch (error) {
-        if (!handleFirestoreError(error, OperationType.DELETE, `clients/${id}`)) toast.error('Failed to delete client');
+      } catch (error: any) {
+        toast.error('Failed to delete client: ' + (error.message || error));
       }
     }
   };

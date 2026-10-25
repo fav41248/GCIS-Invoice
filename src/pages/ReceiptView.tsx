@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { Printer, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
@@ -17,13 +15,44 @@ export default function ReceiptView() {
     const fetchData = async () => {
       if (!id) return;
       try {
-        const invSnap = await getDoc(doc(db, 'invoices', id));
-        if (invSnap.exists()) setInvoice(invSnap.data());
+        // 1. Fetch from Supabase
+        const { data: invData } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (invData) {
+          setInvoice({
+            id: invData.id,
+            invoiceNumber: invData.invoice_number,
+            clientName: invData.client_name,
+            clientAddress: invData.client_address,
+            clientEmail: invData.client_email,
+            clientPhone: invData.client_phone,
+            items: invData.items,
+            subtotal: Number(invData.subtotal || 0),
+            vatRate: Number(invData.vat_rate || 0),
+            vatAmount: Number(invData.vat_amount || 0),
+            grandTotal: Number(invData.grand_total || 0),
+            currency: invData.currency,
+            status: invData.status,
+            issueDate: invData.issue_date,
+            createdAt: invData.created_at
+          });
+        }
         
-        const setSnap = await getDoc(doc(db, 'settings', 'company'));
-        if (setSnap.exists()) setSettings(setSnap.data());
+        const { data: setSupa } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'company')
+          .maybeSingle();
+
+        if (setSupa?.value) {
+          setSettings(setSupa.value);
+        }
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `invoices/${id}`);
+        console.warn("Receipt fetch error:", error);
       } finally {
         setLoading(false);
       }

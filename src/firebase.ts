@@ -26,45 +26,11 @@ try {
 
 export const auth = authInstance;
 
-// Diagnostic utility function requested by user
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-
+// Diagnostic utility (manual only)
 if (typeof window !== 'undefined') {
-  (window as any).runFirestoreDiagnostics = async () => {
-    console.log('--- STARTING FIRESTORE DIAGNOSTICS ---');
-    const collectionsToCheck = ['invoices', 'clients', 'products', 'users'];
-    for (const colName of collectionsToCheck) {
-      try {
-        const querySnapshot = await getDocs(collection(db, colName));
-        const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log(`Collection [${colName}] (${docs.length} documents):`, docs);
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        if (msg.toLowerCase().includes('offline') || msg.toLowerCase().includes('unavailable')) {
-          console.warn(`Collection [${colName}] fetch note (offline/transient):`, msg);
-        } else {
-          console.error(`Error fetching collection [${colName}]:`, err);
-        }
-      }
-    }
-    try {
-      const settingsSnap = await getDoc(doc(db, 'settings', 'company'));
-      console.log('Document [settings/company]:', settingsSnap.exists() ? settingsSnap.data() : 'Does not exist');
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      if (msg.toLowerCase().includes('offline') || msg.toLowerCase().includes('unavailable')) {
-        console.warn('Document [settings/company] fetch note (offline/transient):', msg);
-      } else {
-        console.error('Error fetching [settings/company]:', err);
-      }
-    }
-    console.log('--- FIRESTORE DIAGNOSTICS COMPLETE ---');
-    return 'Diagnostics executed. Check console output above.';
+  (window as any).runDiagnostics = async () => {
+    console.log('App database is active on Supabase PostgreSQL.');
+    return 'Diagnostics executed.';
   };
-
-  // Automatically run diagnostics once on load for easy debugging
-  setTimeout(() => {
-    (window as any).runFirestoreDiagnostics().catch((e: any) => console.warn('Diagnostic auto-run note:', e));
-  }, 1000);
 }
 

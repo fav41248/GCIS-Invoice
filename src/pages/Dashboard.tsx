@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, onSnapshot, where, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../lib/db';
+import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
-import { FileText, Clock, ShieldCheck, CheckCircle2, CreditCard, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, Clock, ShieldCheck, CheckCircle2, CreditCard, Calendar, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getWeekInfo, shiftWeek, getRecentWeeksList, isDateInWeek, WeekInfo } from '../lib/dateUtils';
 
@@ -15,47 +13,71 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [weeklyAudits, setWeeklyAudits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Time view filter: 'week' (default) or 'all'
   const [timeViewMode, setTimeViewMode] = useState<'week' | 'all'>('week');
   const [selectedWeek, setSelectedWeek] = useState<WeekInfo>(() => getWeekInfo());
   const recentWeeks = useMemo(() => getRecentWeeksList(16), []);
 
-  useEffect(() => {
+  const fetchDashboardData = async () => {
     if (!user) return;
-    
-    const q = query(collection(db, 'invoices'));
+    setLoading(true);
+    setFetchError(null);
+    try {
+      let query = supabase.from('invoices').select('*').order('created_at', { ascending: false });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
       if (!isAdmin && !isAuditor && user?.username) {
-        data = data.filter((inv: any) => inv.createdBy?.toLowerCase() === user.username.toLowerCase());
+        query = query.eq('created_by', user.username);
       }
 
-      data.sort((a: any, b: any) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
-      });
+      const { data, error } = await query;
+      if (error) throw error;
 
-      setInvoices(data);
+      const formatted = (data || []).map((inv: any) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        clientName: inv.client_name,
+        grandTotal: Number(inv.grand_total || 0),
+        wholesaleTotal: Number(inv.wholesale_total || 0),
+        profitTotal: Number(inv.profit_total || 0),
+        currency: inv.currency,
+        status: inv.status,
+        profitStatus: inv.profit_status,
+        auditStatus: inv.audit_status,
+        auditorVerified: inv.auditor_verified,
+        createdBy: inv.created_by,
+        createdByEmail: inv.created_by_email,
+        issueDate: inv.issue_date,
+        createdAt: inv.created_at
+      }));
+
+      setInvoices(formatted);
+    } catch (err: any) {
+      console.warn("Error loading dashboard invoices from Supabase:", err);
+      setFetchError(err.message || 'Failed to load invoices from database');
+    } finally {
       setLoading(false);
-    }, (error) => {
-      if (!handleFirestoreError(error, OperationType.LIST, 'invoices')) toast.error('Failed to load dashboard data.');
-      setLoading(false);
-    });
-    return unsubscribe;
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
   }, [user, isAdmin, isAuditor]);
 
   useEffect(() => {
     if (!user || (!isAdmin && !isAuditor)) return;
-    const qAudits = query(collection(db, 'weekly_audits'));
-    const unsub = onSnapshot(qAudits, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setWeeklyAudits(data);
-    }, (err) => console.error("Error loading weekly audits on dashboard:", err));
-    return unsub;
+    const fetchAudits = async () => {
+      try {
+        const { data } = await supabase.from('weekly_audits').select('*');
+        if (data) {
+          setWeeklyAudits(data.map(d => ({ id: d.week_key, ...d })));
+        }
+      } catch (err) {
+        console.warn("Error loading weekly audits on dashboard:", err);
+      }
+    };
+    fetchAudits();
   }, [user, isAdmin, isAuditor]);
 
   const clearedWeeksPendingPayout = useMemo(() => {
@@ -141,6 +163,22 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
+      {fetchError && (
+        <div className="mb-6 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            <span className="text-sm font-medium">{fetchError}</span>
+          </div>
+          <button
+            onClick={() => fetchDashboardData()}
+            className="flex items-center gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-1.5 rounded-lg transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Admin Alert: Weekly Audit Cleared Waiting for Payout */}
       {isAdmin && clearedWeeksPendingPayout.length > 0 && (
         <div className="mb-8 bg-gradient-to-r from-[#0F5132] to-[#198754] text-white p-5 rounded-xl shadow-md border border-emerald-600 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
