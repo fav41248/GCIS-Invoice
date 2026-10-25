@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Trash2, Search, Download, FileText, ChevronLeft, ChevronRight, ArrowUpDown, X, Edit2, AlertTriangle, Check, Upload, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Clock, Trash2, Search, Download, FileText, ChevronLeft, ChevronRight, ArrowUpDown, X, Edit2, AlertTriangle, Check, Upload, ShieldCheck, ExternalLink, CheckCircle2, Filter } from 'lucide-react';
 import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
@@ -14,11 +14,21 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Status filter: 'all' | 'paid' | 'unpaid'
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  const paidCount = useMemo(() => {
+    return invoices.filter(inv => (inv.status || '').toLowerCase() === 'paid').length;
+  }, [invoices]);
+
+  const unpaidCount = useMemo(() => {
+    return invoices.filter(inv => (inv.status || '').toLowerCase() !== 'paid').length;
+  }, [invoices]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any>(null);
@@ -439,6 +449,14 @@ export default function Invoices() {
 
   const filteredAndSortedInvoices = useMemo(() => {
     let result = [...invoices];
+
+    // Status filter: 'all' | 'paid' | 'unpaid'
+    if (statusFilter === 'paid') {
+      result = result.filter(inv => (inv.status || '').toLowerCase() === 'paid');
+    } else if (statusFilter === 'unpaid') {
+      result = result.filter(inv => (inv.status || '').toLowerCase() !== 'paid');
+    }
+
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       result = result.filter(inv => {
@@ -470,7 +488,7 @@ export default function Invoices() {
     });
     
     return result;
-  }, [invoices, searchTerm, sortField, sortOrder]);
+  }, [invoices, statusFilter, searchTerm, sortField, sortOrder]);
 
   const totalPages = Math.ceil(filteredAndSortedInvoices.length / itemsPerPage);
   const currentInvoices = filteredAndSortedInvoices.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -518,6 +536,89 @@ export default function Invoices() {
               <ShieldCheck className="w-4 h-4" />
               Weekly Audit &amp; Payouts
             </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Interactive Status Filter Tabs */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+        {!isAuditor ? (
+          <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <span className="text-xs font-semibold text-gray-500 pl-2 pr-1 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" /> Filter:
+            </span>
+            <button
+              type="button"
+              onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+                statusFilter === 'all'
+                  ? 'bg-white text-gray-900 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span>All Invoices</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                statusFilter === 'all' ? 'bg-gray-100 text-gray-800' : 'bg-gray-200 text-gray-600'
+              }`}>
+                {invoices.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatusFilter('paid'); setCurrentPage(1); }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+                statusFilter === 'paid'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Paid</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                statusFilter === 'paid' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-800'
+              }`}>
+                {paidCount}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatusFilter('unpaid'); setCurrentPage(1); }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+                statusFilter === 'unpaid'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Unpaid</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                statusFilter === 'unpaid' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-800'
+              }`}>
+                {unpaidCount}
+              </span>
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-md flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            Auditor View (Showing {invoices.length} Paid Invoices)
+          </div>
+        )}
+
+        {/* Filter status indicator & reset */}
+        <div className="text-xs text-gray-500 flex items-center gap-2">
+          {statusFilter !== 'all' ? (
+            <>
+              <span>Showing: <strong className="capitalize text-gray-800">{statusFilter}</strong> ({filteredAndSortedInvoices.length})</span>
+              <button 
+                onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
+                className="text-[#198754] hover:underline font-semibold"
+              >
+                Reset filter
+              </button>
+            </>
+          ) : (
+            <span>Showing: <strong>{filteredAndSortedInvoices.length}</strong> invoices</span>
           )}
         </div>
       </div>
@@ -698,9 +799,28 @@ export default function Invoices() {
                 <td colSpan={8} className="px-6 py-12 text-center">
                    <div className="flex flex-col items-center justify-center text-gray-500">
                      <FileText className="w-12 h-12 text-gray-300 mb-3" />
-                     <p className="text-lg font-medium text-gray-900 mb-1">{searchTerm ? "No matching invoices found" : "No invoices generated yet"}</p>
-                     <p className="text-sm mb-4">Create your first invoice to get started.</p>
-                     {!searchTerm && (
+                     <p className="text-lg font-medium text-gray-900 mb-1">
+                       {searchTerm 
+                         ? "No matching invoices found" 
+                         : statusFilter === 'paid' 
+                           ? "No paid invoices found" 
+                           : statusFilter === 'unpaid' 
+                             ? "No unpaid invoices found" 
+                             : "No invoices generated yet"}
+                     </p>
+                     <p className="text-sm mb-4">
+                       {statusFilter !== 'all' 
+                         ? `There are currently no ${statusFilter} invoices matching your criteria.`
+                         : "Create your first invoice to get started."}
+                     </p>
+                     {statusFilter !== 'all' || searchTerm ? (
+                       <button
+                         onClick={() => { setStatusFilter('all'); setSearchTerm(''); setCurrentPage(1); }}
+                         className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-4 py-2 rounded-md transition-colors"
+                       >
+                         View All Invoices
+                       </button>
+                     ) : (
                        <Link to="/generator" className="bg-[#198754] text-white px-4 py-2 rounded-md font-medium hover:bg-[#0F5132] transition-colors">
                          Create New Invoice
                        </Link>
