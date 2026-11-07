@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
-import { Printer, ArrowLeft, Eye } from 'lucide-react';
+import { Printer, ArrowLeft, Eye, Edit3 } from 'lucide-react';
 import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
 import { getStaticAccountsForRole } from '../lib/paymentAccounts';
@@ -27,6 +27,29 @@ export default function InvoiceView() {
           .maybeSingle();
 
         if (invData) {
+          // Resolve creator phone assigned to user during account creation
+          let repPhone = '';
+          if (invData.created_by) {
+            const { data: creatorUser } = await supabase
+              .from('users')
+              .select('phone')
+              .eq('username', invData.created_by)
+              .maybeSingle();
+            if (creatorUser?.phone) {
+              repPhone = creatorUser.phone;
+            }
+          }
+          if (!repPhone && invData.created_by_email) {
+            const { data: creatorUser2 } = await supabase
+              .from('users')
+              .select('phone')
+              .ilike('name', invData.created_by_email)
+              .maybeSingle();
+            if (creatorUser2?.phone) {
+              repPhone = creatorUser2.phone;
+            }
+          }
+
           setInvoice({
             id: invData.id,
             invoiceNumber: invData.invoice_number,
@@ -51,6 +74,7 @@ export default function InvoiceView() {
             auditorVerified: invData.auditor_verified,
             createdBy: invData.created_by,
             createdByEmail: invData.created_by_email,
+            repPhone: repPhone,
             issueDate: invData.issue_date,
             dueDate: invData.due_date,
             createdAt: invData.created_at
@@ -164,6 +188,14 @@ export default function InvoiceView() {
             >
               <Eye className='h-4 w-4 text-blue-700' /> View Payment Proof
             </button>
+          )}
+          {(invoice.status || 'unpaid').toLowerCase() === 'unpaid' && !invoice.proofOfPayment && (isAdmin || invoice.createdBy === user?.username) && (
+            <Link
+              to={`/generator?editId=${invoice.id}`}
+              className='bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-4 py-2 rounded-md font-bold text-sm flex items-center gap-1.5 transition-colors shadow-2xs'
+            >
+              <Edit3 className='h-4 w-4 text-amber-700' /> Edit Invoice
+            </Link>
           )}
           <button onClick={handlePrint} className='bg-[#0F5132] text-white px-6 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-[#198754] transition-colors'>
             <Printer className='h-4 w-4' /> Print / Save PDF

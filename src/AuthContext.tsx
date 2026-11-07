@@ -80,6 +80,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(false);
 
+  // Sync fresh profile details (including phone number) from DB
+  useEffect(() => {
+    if (!user?.username) return;
+    const syncProfileFromDb = async () => {
+      try {
+        const { data: supaUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', user.username)
+          .maybeSingle();
+
+        if (supaUser) {
+          const freshPhone = supaUser.phone || '';
+          const freshTier = (supaUser.pricing_tier as any) || 'bronze';
+          const freshName = supaUser.name || user.name;
+          const freshRole = resolveRole(supaUser.role, user.username);
+          if (freshPhone !== user.phone || freshTier !== user.pricingTier || freshName !== user.name || freshRole !== user.role) {
+            const updated: CustomUser = {
+              username: user.username,
+              name: freshName,
+              role: freshRole,
+              phone: freshPhone,
+              pricingTier: freshTier
+            };
+            setUser(updated);
+            safeStoreUser(updated);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not sync user profile from DB:", err);
+      }
+    };
+    syncProfileFromDb();
+  }, [user?.username]);
+
   const safeStoreUser = (userData: CustomUser) => {
     try {
       localStorage.setItem('gcis_user', JSON.stringify(userData));
@@ -97,7 +132,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Default master admin fallback
     if (normalized === 'admin' && (pin === '123456' || pin === 'admin')) {
-      const userData: CustomUser = { username: 'admin', role: 'admin', name: 'Administrator' };
+      let adminPhone = '';
+      try {
+        const { data: adminRow } = await supabase.from('users').select('phone').eq('username', 'admin').maybeSingle();
+        if (adminRow?.phone) adminPhone = adminRow.phone;
+      } catch {}
+      const userData: CustomUser = { username: 'admin', role: 'admin', name: 'Administrator', phone: adminPhone };
       setUser(userData);
       safeStoreUser(userData);
       return;

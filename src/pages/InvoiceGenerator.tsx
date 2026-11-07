@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, Printer, Save, AlertCircle, Lock, Building2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { CheckCircle2, Printer, Save, AlertCircle, Lock, Building2, RotateCcw, Edit3, X } from 'lucide-react';
 import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
@@ -11,11 +11,22 @@ import { compressFileToDataUrl } from '../lib/drive';
 
 export default function InvoiceGenerator() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuditor, isSalesRep, isSalesAgent, isAdmin } = useAuth();
 
   if (isAuditor) {
     return <Navigate to="/" replace />;
   }
+
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const editId = searchParams.get('editId');
+
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [creatorPhone, setCreatorPhone] = useState<string>(user?.phone || '');
+  const [creatorDisplayName, setCreatorDisplayName] = useState<string>(user?.name || '');
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+
   const [rawInput, setRawInput] = useState('');
   const [clients, setClients] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -27,7 +38,20 @@ export default function InvoiceGenerator() {
   
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${new Date().getFullYear()}-0001`);
 
+  // Fetch creator phone from users table if not already populated
   useEffect(() => {
+    if (user?.username) {
+      supabase.from('users').select('phone, name').eq('username', user.username).maybeSingle().then(({ data }) => {
+        if (data?.phone) setCreatorPhone(data.phone);
+        if (data?.name && !editingInvoiceId) setCreatorDisplayName(data.name);
+      });
+    }
+  }, [user?.username, editingInvoiceId]);
+
+  useEffect(() => {
+    // Only generate a new sequential invoice number if not editing an existing invoice
+    if (editId) return;
+
     const fetchLatestInvoiceNumber = async () => {
       try {
         const currentYear = new Date().getFullYear();
@@ -53,7 +77,7 @@ export default function InvoiceGenerator() {
       }
     };
     fetchLatestInvoiceNumber();
-  }, []);
+  }, [editId]);
 
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
@@ -105,7 +129,119 @@ export default function InvoiceGenerator() {
     toast.success(`Loaded ${targetRole === 'sales_rep' ? 'Sales Rep' : 'Sales Agent'} defaults`);
   };
 
-  const location = useLocation();
+  // Restore Draft on mount if not in edit mode
+  useEffect(() => {
+    if (editId) return;
+    if (!user?.username) return;
+
+    try {
+      const draftKey = `gcis_invoice_draft_${user.username}`;
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.billTo || (parsed.manualItems && parsed.manualItems.length > 0) || parsed.notes || parsed.rawInput)) {
+          if (parsed.billTo) setBillTo(parsed.billTo);
+          if (parsed.billToAddress) setBillToAddress(parsed.billToAddress);
+          if (parsed.billToPhone) setBillToPhone(parsed.billToPhone);
+          if (parsed.selectedClientId) setSelectedClientId(parsed.selectedClientId);
+          if (parsed.issueDate) setIssueDate(parsed.issueDate);
+          if (parsed.dueDate) setDueDate(parsed.dueDate);
+          if (parsed.currency) setCurrency(parsed.currency);
+          if (parsed.vatRate !== undefined) setVatRate(parsed.vatRate);
+          if (parsed.notes) setNotes(parsed.notes);
+          if (parsed.manualItems && Array.isArray(parsed.manualItems)) setManualItems(parsed.manualItems);
+          if (parsed.rawInput) setRawInput(parsed.rawInput);
+          if (parsed.selectedAccounts && Array.isArray(parsed.selectedAccounts)) setSelectedAccounts(parsed.selectedAccounts);
+          if (parsed.itemOverrides) setItemOverrides(parsed.itemOverrides);
+          setDraftSavedAt(parsed.savedAt || 'earlier session');
+          setHasRestoredDraft(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not parse saved draft:", e);
+    }
+  }, [editId, user?.username]);
+
+  // Debounced Auto-Save Draft to localStorage (only when not in editId mode)
+  useEffect(() => {
+    if (editId || editingInvoiceId) return;
+    if (!user?.username) return;
+
+    const hasContent = Boolean(
+      billTo.trim() || 
+      manualItems.length > 0 || 
+      rawInput.trim() || 
+      notes.trim() || 
+      billToAddress.trim() || 
+      billToPhone.trim()
+    );
+
+    if (!hasContent) return;
+
+    const timer = setTimeout(() => {
+      try {
+        const draftKey = `gcis_invoice_draft_${user.username}`;
+        const draftData = {
+          selectedClientId,
+          billTo,
+          billToAddress,
+          billToPhone,
+          issueDate,
+          dueDate,
+          currency,
+          vatRate,
+          notes,
+          manualItems,
+          rawInput,
+          selectedAccounts,
+          itemOverrides,
+          savedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draftData));
+        setDraftSavedAt(draftData.savedAt);
+      } catch (err) {
+        console.warn("Failed to auto-save draft:", err);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [
+    editId,
+    editingInvoiceId,
+    user?.username,
+    selectedClientId,
+    billTo,
+    billToAddress,
+    billToPhone,
+    issueDate,
+    dueDate,
+    currency,
+    vatRate,
+    notes,
+    manualItems,
+    rawInput,
+    selectedAccounts,
+    itemOverrides
+  ]);
+
+  const handleDiscardDraft = () => {
+    if (user?.username) {
+      localStorage.removeItem(`gcis_invoice_draft_${user.username}`);
+    }
+    setBillTo('');
+    setBillToAddress('');
+    setBillToPhone('');
+    setSelectedClientId('');
+    setManualItems([]);
+    setRawInput('');
+    setItemOverrides({});
+    setDeletedItems(new Set());
+    setNotes('');
+    setVatRate(0);
+    setHasRestoredDraft(false);
+    setDraftSavedAt(null);
+    toast.success('Draft cleared. Starting fresh invoice.');
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -121,10 +257,9 @@ export default function InvoiceGenerator() {
         const fetchedClients = supaClients || [];
         setClients(fetchedClients);
 
-        // Pre-select client if passed via URL
-        const searchParams = new URLSearchParams(location.search);
+        // Pre-select client if passed via URL (only if not editing)
         const preselectedClientId = searchParams.get('clientId');
-        if (preselectedClientId) {
+        if (preselectedClientId && !editId) {
           const matched = fetchedClients.find((c: any) => c.id === preselectedClientId);
           if (matched) {
             setSelectedClientId(matched.id);
@@ -165,11 +300,76 @@ export default function InvoiceGenerator() {
 
         if (supaSettings?.value) {
           setCompanySettings(supaSettings.value);
-          const initialStatic = getStaticAccountsForRole(userRole, supaSettings.value.paymentAccounts);
-          if (initialStatic && initialStatic.length > 0) {
-            setSelectedAccounts(initialStatic.map((a: any) => a.id));
-          } else if (supaSettings.value.paymentAccounts && supaSettings.value.paymentAccounts.length > 0) {
-            setSelectedAccounts([supaSettings.value.paymentAccounts[0].id]);
+          if (!editId) {
+            const initialStatic = getStaticAccountsForRole(userRole, supaSettings.value.paymentAccounts);
+            if (initialStatic && initialStatic.length > 0) {
+              setSelectedAccounts(initialStatic.map((a: any) => a.id));
+            } else if (supaSettings.value.paymentAccounts && supaSettings.value.paymentAccounts.length > 0) {
+              setSelectedAccounts([supaSettings.value.paymentAccounts[0].id]);
+            }
+          }
+        }
+
+        // 4. Handle Edit Mode if editId is provided
+        if (editId) {
+          const { data: invToEdit, error: invErr } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('id', editId)
+            .maybeSingle();
+
+          if (invErr || !invToEdit) {
+            toast.error('Invoice to edit was not found.');
+            navigate('/invoices');
+            return;
+          }
+
+          // Security check: Once marked as paid and proof of payment is uploaded, editing is locked
+          const isPaid = (invToEdit.status || '').toLowerCase() === 'paid';
+          const hasProof = Boolean(invToEdit.proof_of_payment);
+          if (isPaid || hasProof) {
+            toast.error('This invoice has been marked as paid or has payment proof uploaded, and cannot be edited.', { duration: 5000 });
+            navigate(`/invoice/${editId}`);
+            return;
+          }
+
+          // Security check: Only the creator of the invoice or an admin can edit
+          if (!isAdmin && invToEdit.created_by !== user.username) {
+            toast.error('Permission denied: You can only edit unpaid invoices that you created.');
+            navigate('/invoices');
+            return;
+          }
+
+          setEditingInvoiceId(invToEdit.id);
+          setInvoiceNumber(invToEdit.invoice_number);
+          setSelectedClientId(invToEdit.client_id || 'custom');
+          setBillTo(invToEdit.client_name || '');
+          setBillToAddress(invToEdit.client_address || '');
+          setBillToPhone(invToEdit.client_phone || '');
+          setIssueDate(invToEdit.issue_date || new Date().toISOString().split('T')[0]);
+          setDueDate(invToEdit.due_date || new Date().toISOString().split('T')[0]);
+          setCurrency(invToEdit.currency || 'NGN');
+          setVatRate(Number(invToEdit.vat_rate || 0));
+          setNotes(invToEdit.proof_note || '');
+          setManualItems(Array.isArray(invToEdit.items) ? invToEdit.items : []);
+          setRawInput('');
+          setItemOverrides({});
+          setDeletedItems(new Set());
+          setCreatorDisplayName(invToEdit.created_by_email || user.name || '');
+
+          // Fetch the creator's phone from the users table for accurate header phone
+          if (invToEdit.created_by) {
+            const { data: uData } = await supabase
+              .from('users')
+              .select('phone, name')
+              .eq('username', invToEdit.created_by)
+              .maybeSingle();
+            if (uData?.phone) {
+              setCreatorPhone(uData.phone);
+            }
+            if (uData?.name) {
+              setCreatorDisplayName(uData.name);
+            }
           }
         }
       } catch (error) {
@@ -177,7 +377,7 @@ export default function InvoiceGenerator() {
       }
     };
     fetchData();
-  }, [userRole, user, isAdmin, location.search]);
+  }, [userRole, user, isAdmin, editId, searchParams, navigate]);
 
   const handleClientChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
@@ -402,6 +602,39 @@ export default function InvoiceGenerator() {
         console.warn("Could not auto-register client in Supabase:", clientErr);
       }
 
+      if (editingInvoiceId) {
+        // Updating an existing unpaid invoice
+        const updatePayload = {
+          client_id: finalClientId || 'unknown',
+          client_name: billTo.trim(),
+          client_address: billToAddress.trim(),
+          client_phone: billToPhone.trim(),
+          items: itemsWithWholesale,
+          subtotal,
+          vat_rate: vatRate,
+          vat_amount: vatAmount,
+          grand_total: grandTotal,
+          wholesale_total: wholesaleTotal,
+          profit_total: profitTotal,
+          currency,
+          issue_date: issueDate,
+          due_date: dueDate,
+        };
+
+        const { error: updErr } = await supabase
+          .from('invoices')
+          .update(updatePayload)
+          .eq('id', editingInvoiceId);
+
+        if (updErr) throw updErr;
+
+        if (user?.username) {
+          localStorage.removeItem(`gcis_invoice_draft_${user.username}`);
+        }
+        setSavedDocId(editingInvoiceId);
+        return true;
+      }
+
       const invoiceId = `inv_${Date.now()}`;
       const supaInvoiceData = {
         id: invoiceId,
@@ -430,10 +663,13 @@ export default function InvoiceGenerator() {
       const { error: insErr } = await supabase.from('invoices').insert(supaInvoiceData);
       if (insErr) throw insErr;
 
+      if (user?.username) {
+        localStorage.removeItem(`gcis_invoice_draft_${user.username}`);
+      }
       setSavedDocId(invoiceId);
       return true;
     } catch (error: any) {
-       toast.error('Failed to create invoice: ' + (error.message || error));
+       toast.error((editingInvoiceId ? 'Failed to update invoice: ' : 'Failed to create invoice: ') + (error.message || error));
        return false;
     } finally {
       setIsSaving(false);
@@ -450,14 +686,66 @@ export default function InvoiceGenerator() {
   const handleSave = async () => {
     const success = await saveInvoiceToDb();
     if (success) {
-      toast.success('Invoice saved successfully');
-      navigate('/invoices');
+      if (user?.username) {
+        localStorage.removeItem(`gcis_invoice_draft_${user.username}`);
+      }
+      toast.success(editingInvoiceId ? 'Invoice updated successfully' : 'Invoice saved successfully');
+      navigate(editingInvoiceId ? `/invoice/${editingInvoiceId}` : '/invoices');
     }
   };
 
   return (
       <div className='flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden print:p-0 print:overflow-visible print:block print:block print:overflow-visible'>
         <section className='w-full lg:w-[400px] flex flex-col gap-5 lg:overflow-y-auto pr-0 lg:pr-2 print:hidden shrink-0'>
+          {/* Banner for Edit Mode */}
+          {editingInvoiceId && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3.5 flex items-start justify-between gap-3 shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <Edit3 className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                    Editing Unpaid Invoice: {invoiceNumber}
+                  </h3>
+                  <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                    You can update details, items, or shipping. Changes will update the existing invoice.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/invoices')}
+                className="text-xs font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded transition-colors whitespace-nowrap shrink-0"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {/* Banner for Restored Draft */}
+          {hasRestoredDraft && !editingInvoiceId && (
+            <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-3 flex items-start justify-between gap-3 shadow-2xs">
+              <div className="flex items-start gap-2">
+                <RotateCcw className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-xs font-bold text-emerald-950">
+                    Draft Restored {draftSavedAt ? `(${draftSavedAt})` : ''}
+                  </h3>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Your unsaved invoice was auto-recovered. You can continue or discard.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="text-[11px] font-bold text-red-700 hover:text-red-900 bg-white hover:bg-red-50 border border-red-200 px-2.5 py-1 rounded transition-colors whitespace-nowrap shrink-0"
+                title="Discard draft and start fresh"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
           <div className='bg-white p-5 rounded-md border border-gray-200 shadow-sm shrink-0'>
             <h2 className='text-sm font-semibold mb-3 uppercase tracking-wider text-gray-500'>1. Add Items</h2>
             <div className='grid grid-cols-12 gap-2 mb-3'>
@@ -729,8 +1017,20 @@ export default function InvoiceGenerator() {
               className='mt-4 w-full bg-[#0F5132] text-white px-6 py-3 rounded-md font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#198754] transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed'
             >
               <Save className='h-4 w-4' />
-              {isSaving ? 'Saving...' : hasBelowWholesalePrice ? 'Price Below Wholesale Limit' : 'Save Invoice'}
+              {isSaving 
+                ? (editingInvoiceId ? 'Updating Invoice...' : 'Saving...') 
+                : hasBelowWholesalePrice 
+                ? 'Price Below Wholesale Limit' 
+                : editingInvoiceId 
+                ? 'Update Invoice' 
+                : 'Save Invoice'}
             </button>
+            {draftSavedAt && !editingInvoiceId && (
+              <div className="flex items-center justify-center gap-1.5 text-[11px] text-emerald-700 font-medium mt-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Auto-saved draft at {draftSavedAt}</span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -759,14 +1059,16 @@ export default function InvoiceGenerator() {
                 <div>
                   <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
                   <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Invoice #: {invoiceNumber}</p>
-                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {user?.name}</p>
+                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {creatorDisplayName || user?.name}</p>
                 </div>
               </div>
               <div className='text-left @2xl:text-right'>
                 <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
                 <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
                 {companySettings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{companySettings.email}</p>}
-                {(user?.phone || companySettings?.phone) && <p className='text-sm text-gray-500 mt-1'>{user?.phone || companySettings?.phone}</p>}
+                {(creatorPhone || user?.phone || companySettings?.phone) && (
+                  <p className='text-sm text-gray-500 mt-1'>{creatorPhone || user?.phone || companySettings?.phone}</p>
+                )}
               </div>
             </div>
             
@@ -993,14 +1295,16 @@ export default function InvoiceGenerator() {
                 <div>
                   <h3 className='text-3xl font-black text-[#0F5132] tracking-wider'>INVOICE</h3>
                   <p className='text-gray-500 text-[13px] font-mono uppercase mt-1'>Invoice #: {invoiceNumber}</p>
-                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {user?.name}</p>
+                  <p className='text-gray-500 text-[13px] font-mono uppercase mt-0.5'>Issued By: {creatorDisplayName || user?.name}</p>
                 </div>
               </div>
               <div className='text-left @2xl:text-right'>
                 <h4 className='font-bold text-lg text-[#212529]'>{companySettings?.name || 'Green Collar Integrated Services'}</h4>
                 <p className='text-sm text-gray-500 whitespace-pre-wrap'>{companySettings?.address || '12 Industrial Way, Ikeja\nLagos, Nigeria'}</p>
                 {companySettings?.email && <p className='text-sm text-[#0F5132] font-medium mt-1'>{companySettings.email}</p>}
-                {(user?.phone || companySettings?.phone) && <p className='text-sm text-gray-500 mt-1'>{user?.phone || companySettings?.phone}</p>}
+                {(creatorPhone || user?.phone || companySettings?.phone) && (
+                  <p className='text-sm text-gray-500 mt-1'>{creatorPhone || user?.phone || companySettings?.phone}</p>
+                )}
               </div>
             </div>
             

@@ -730,10 +730,18 @@ export default function Invoices() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end items-center gap-2">
                       <Link to={`/invoice/${inv.id}`} className="inline-block text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors">
                         View
                       </Link>
+                      {(inv.status || 'unpaid').toLowerCase() === 'unpaid' && !inv.proofOfPayment && (isAdmin || inv.createdBy === user?.username) && (
+                        <Link 
+                          to={`/generator?editId=${inv.id}`}
+                          className="inline-block text-sm bg-amber-50 text-amber-800 border border-amber-300 px-3 py-1 rounded hover:bg-amber-100 transition-colors font-medium whitespace-nowrap"
+                        >
+                          Edit
+                        </Link>
+                      )}
                       {inv.status === 'unpaid' && (isAdmin || inv.createdBy === user?.username) ? (
                         <button 
                           onClick={() => handleMarkPaidClick(inv)}

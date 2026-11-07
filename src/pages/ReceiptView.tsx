@@ -23,6 +23,29 @@ export default function ReceiptView() {
           .maybeSingle();
 
         if (invData) {
+          // Resolve creator phone assigned to user during account creation
+          let repPhone = '';
+          if (invData.created_by) {
+            const { data: creatorUser } = await supabase
+              .from('users')
+              .select('phone')
+              .eq('username', invData.created_by)
+              .maybeSingle();
+            if (creatorUser?.phone) {
+              repPhone = creatorUser.phone;
+            }
+          }
+          if (!repPhone && invData.created_by_email) {
+            const { data: creatorUser2 } = await supabase
+              .from('users')
+              .select('phone')
+              .ilike('name', invData.created_by_email)
+              .maybeSingle();
+            if (creatorUser2?.phone) {
+              repPhone = creatorUser2.phone;
+            }
+          }
+
           setInvoice({
             id: invData.id,
             invoiceNumber: invData.invoice_number,
@@ -37,6 +60,9 @@ export default function ReceiptView() {
             grandTotal: Number(invData.grand_total || 0),
             currency: invData.currency,
             status: invData.status,
+            createdBy: invData.created_by,
+            createdByEmail: invData.created_by_email,
+            repPhone: repPhone,
             issueDate: invData.issue_date,
             createdAt: invData.created_at
           });

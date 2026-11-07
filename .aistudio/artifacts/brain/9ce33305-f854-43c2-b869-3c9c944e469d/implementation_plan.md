@@ -1,23 +1,18 @@
-# Implementation Plan - Google Drive Integration for Proof of Payment Uploads
+# Implementation Plan - Invoice Creator Contact, Auto-Save Drafts & Editing Unpaid Invoices
 
-## User Requirement
-Connect proof of payment uploads by sales reps to a company Google Drive folder so that all uploaded payment receipts and transfer confirmations are stored securely in Google Drive with ample storage capacity, rather than consuming Firestore database document size limits.
+## Completed Requirements
 
-## Proposed Changes
+### 1. User Assigned Phone Number on Invoices & Receipts
+- Phone number assigned to each user upon account creation in `users` table is dynamically resolved and cached in `AuthContext`.
+- `InvoiceGenerator.tsx`, `InvoiceView.tsx`, and `ReceiptView.tsx` display the creator's assigned telephone contact (`repPhone || user?.phone || companySettings?.phone`) on screen and in print/PDF modals.
 
-### 1. OAuth & Google Workspace Configuration
-- Configure Google Workspace OAuth scope: `https://www.googleapis.com/auth/file-upload` or `https://www.googleapis.com/auth/drive.file` for uploading files to Google Drive.
-- Initialize Google OAuth client in the frontend to authenticate the company admin or sales rep Google account.
+### 2. Auto-Save Draft While Generating Invoice
+- Automatically debounces and persists in-progress changes (`billTo`, client address, phone, manual & price-list items, notes, currency, dates, VAT) to `localStorage` key `gcis_invoice_draft_<username>`.
+- Restores draft on page reload with a "Draft Restored" banner and "Discard Draft" option.
+- Automatically clears the draft once the invoice is saved or updated.
 
-### 2. Google Drive Service Utility (`src/lib/googleDrive.ts`)
-- Implement a Google Drive API helper utility to handle uploading files (images, PDFs) directly to a designated Google Drive folder (or creating a "Green Collar Invoices - Proof of Payments" folder automatically).
-- Return the webViewLink or direct file URL and file ID to be saved on the invoice document in Firestore.
-
-### 3. Invoice Generator & Payment Proof Modal Updates (`src/pages/Invoices.tsx`)
-- Update the payment proof upload handler to upload the file to Google Drive via the Google Drive API.
-- Store the returned Google Drive file URL and metadata on the invoice record in Firestore instead of storing large base64 strings.
-- Update the "View Proof" modal to display the image or PDF fetched from the Google Drive file link.
-
-## Verification Plan
-- Compile and lint the app to ensure zero TypeScript errors.
-- Verify OAuth authentication flow and Google Drive file upload handling.
+### 3. Editing Unpaid Invoices with Strict Lockout Once Paid / Proof Uploaded
+- Added an **Edit** action in `Invoices.tsx` and an **Edit Invoice** action in `InvoiceView.tsx`.
+- The button is only visible to the invoice creator (or admin) while status is `unpaid` and no proof of payment is uploaded.
+- Route `/generator?editId=<id>` pre-loads the invoice for editing, displays an editing banner with a Cancel option, and updates the existing invoice record via Supabase upon saving.
+- Editing is strictly locked once marked as paid or once payment proof has been uploaded.
