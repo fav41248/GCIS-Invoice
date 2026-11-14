@@ -7,6 +7,8 @@ import { PrintModal } from '../components/PrintModal';
 import { downloadAsPDF } from '../lib/pdfGenerator';
 import { getStaticAccountsForRole } from '../lib/paymentAccounts';
 import { ProofViewerModal } from '../components/ProofViewerModal';
+import { processProofOfPayment } from '../lib/drive';
+import { MAX_PAYMENT_PROOFS, parseInvoiceProofs, serializeInvoiceProofs, ProofItem } from '../lib/proofUtils';
 import toast from 'react-hot-toast';
 
 export default function InvoiceView() {
@@ -68,6 +70,7 @@ export default function InvoiceView() {
             status: invData.status,
             profitStatus: invData.profit_status,
             proofOfPayment: invData.proof_of_payment,
+            proofOfPaymentId: invData.proof_of_payment_id,
             proofOfPaymentName: invData.proof_of_payment_name,
             proofNote: invData.proof_note,
             auditStatus: invData.audit_status,
@@ -122,6 +125,116 @@ export default function InvoiceView() {
     } catch (err: any) {
       toast.error('Failed to update verification: ' + (err.message || 'Error'));
     }
+  };
+
+  const handleAddProofs = async (inv: any, files: File[], note: string) => {
+    if (!inv) return;
+    const existingProofs = parseInvoiceProofs(inv);
+    if (existingProofs.length + files.length > MAX_PAYMENT_PROOFS) {
+      toast.error(`Maximum of ${MAX_PAYMENT_PROOFS} proofs allowed per invoice.`);
+      return;
+    }
+
+    const addedItems: ProofItem[] = [];
+    for (const file of files) {
+      const result = await processProofOfPayment(file);
+      addedItems.push({
+        url: result.url,
+        id: result.id,
+        name: file.name,
+        note: note.trim(),
+        uploadedAt: new Date().toISOString()
+      });
+    }
+
+    const combinedProofs = [...existingProofs, ...addedItems].slice(0, MAX_PAYMENT_PROOFS);
+    const serialized = serializeInvoiceProofs(combinedProofs);
+    const updatePayload: any = { ...serialized.db };
+    if (!inv.proofNote && note.trim()) updatePayload.proof_note = note.trim();
+
+    const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
+    if (error) throw error;
+
+    setInvoice((prev: any) => ({
+      ...prev,
+      ...serialized.ui,
+      proofNote: updatePayload.proof_note ?? prev.proofNote
+    }));
+    toast.success(`Added ${addedItems.length} payment proof${addedItems.length > 1 ? 's' : ''}!`);
+  };
+
+  const handleUpdateProof = async (inv: any, file: File | null, note: string, proofIndex = 0) => {
+    if (!inv) return;
+    const existingProofs = parseInvoiceProofs(inv);
+    const updatedProofs = [...existingProofs];
+
+    if (file) {
+      const result = await processProofOfPayment(file);
+      const target = updatedProofs[proofIndex] || { url: '', name: '' };
+      updatedProofs[proofIndex] = {
+        ...target,
+        url: result.url,
+        id: result.id,
+        name: file.name,
+        note: note.trim(),
+        uploadedAt: new Date().toISOString()
+      };
+    } else if (updatedProofs[proofIndex]) {
+      updatedProofs[proofIndex] = { ...updatedProofs[proofIndex], note: note.trim() };
+    }
+
+    const serialized = serializeInvoiceProofs(updatedProofs);
+    const updatePayload: any = {
+      ...serialized.db,
+      ...(updatedProofs.length <= 1 || proofIndex === 0 ? { proof_note: note.trim() } : {})
+    };
+
+    const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
+    if (error) throw error;
+
+    setInvoice((prev: any) => ({
+      ...prev,
+      ...serialized.ui,
+      proofNote: updatedProofs.length <= 1 || proofIndex === 0 ? note.trim() : prev.proofNote
+    }));
+    toast.success('Proof of payment updated successfully!');
+  };
+
+  const handleDeleteProof = async (inv: any, markAsUnpaid = false, proofIndex?: number) => {
+    if (!inv) return;
+    const existingProofs = parseInvoiceProofs(inv);
+    let remainingProofs: ProofItem[] = [];
+
+    if (proofIndex !== undefined && existingProofs.length > 1 && !markAsUnpaid) {
+      remainingProofs = existingProofs.filter((_, idx) => idx !== proofIndex);
+    }
+
+    const serialized = serializeInvoiceProofs(remainingProofs);
+    const updatePayload: any = {
+      ...serialized.db,
+      ...(remainingProofs.length === 0 ? { proof_note: '' } : {})
+    };
+    if (markAsUnpaid) {
+      updatePayload.status = 'unpaid';
+      updatePayload.profit_status = 'unpaid';
+    }
+
+    const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
+    if (error) throw error;
+
+    setInvoice((prev: any) => ({
+      ...prev,
+      ...serialized.ui,
+      ...(remainingProofs.length === 0 ? { proofNote: '' } : {}),
+      ...(markAsUnpaid ? { status: 'unpaid', profitStatus: 'unpaid' } : {})
+    }));
+    toast.success(
+      remainingProofs.length > 0
+        ? `Proof #${(proofIndex ?? 0) + 1} removed.`
+        : markAsUnpaid
+        ? 'Proof deleted and invoice marked as unpaid.'
+        : 'Proof of payment deleted.'
+    );
   };
 
   const displayAccounts = React.useMemo(() => {
@@ -180,15 +293,19 @@ export default function InvoiceView() {
           <ArrowLeft className="w-4 h-4" /> Back to Invoices
         </Link>
         <div className="flex items-center gap-3">
-          {invoice.proofOfPayment && (
-            <button 
-              type="button"
-              onClick={() => setShowProofModal(true)} 
-              className='bg-blue-50 text-blue-800 border border-blue-200 px-4 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-blue-100 transition-colors shadow-2xs'
-            >
-              <Eye className='h-4 w-4 text-blue-700' /> View Payment Proof
-            </button>
-          )}
+          {invoice.proofOfPayment && (() => {
+            const proofCount = parseInvoiceProofs(invoice).length;
+            return (
+              <button 
+                type="button"
+                onClick={() => setShowProofModal(true)} 
+                className='bg-blue-50 text-blue-800 border border-blue-200 px-4 py-2 rounded-md font-bold text-sm flex items-center gap-2 hover:bg-blue-100 transition-colors shadow-2xs'
+              >
+                <Eye className='h-4 w-4 text-blue-700' />
+                {proofCount > 1 ? `View Payment Proofs (${proofCount}/${MAX_PAYMENT_PROOFS})` : 'View Payment Proof'}
+              </button>
+            );
+          })()}
           {(invoice.status || 'unpaid').toLowerCase() === 'unpaid' && !invoice.proofOfPayment && (isAdmin || invoice.createdBy === user?.username) && (
             <Link
               to={`/generator?editId=${invoice.id}`}
@@ -506,6 +623,9 @@ export default function InvoiceView() {
           invoice?.proofLocked
         )}
         onToggleVerified={handleToggleVerified}
+        onAddProofs={handleAddProofs}
+        onUpdateProof={handleUpdateProof}
+        onDeleteProof={handleDeleteProof}
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuth } from '../AuthContext';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Edit2, Save, X, FileText, Calendar, ExternalLink, ShieldCheck, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Save, X, FileText, Calendar, ExternalLink, ShieldCheck, RotateCcw, Trash2, AlertTriangle } from 'lucide-react';
 import { ProofViewerModal } from '../components/ProofViewerModal';
 
 export default function Users() {
@@ -43,6 +43,46 @@ export default function Users() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [viewingProof, setViewingProof] = useState<any>(null);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  const handleConfirmDeleteUser = async () => {
+    if (!isAdmin || !userToDelete) return;
+    if (userToDelete.username === 'admin' || userToDelete.username === user?.username) {
+      toast.error('You cannot delete the master admin or your own active account.');
+      setUserToDelete(null);
+      return;
+    }
+
+    setIsDeletingUser(true);
+    try {
+      const { error: delByIdErr } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userToDelete.id);
+      if (delByIdErr) throw delByIdErr;
+
+      if (userToDelete.username && userToDelete.username !== userToDelete.id) {
+        const { error: delByNameErr } = await supabase
+          .from('users')
+          .delete()
+          .eq('username', userToDelete.username);
+        if (delByNameErr) throw delByNameErr;
+      }
+
+      setUsers(prev =>
+        prev.filter(
+          item => item.id !== userToDelete.id && item.username !== userToDelete.username
+        )
+      );
+      toast.success(`User "${userToDelete.name}" (@${userToDelete.username}) deleted. They can no longer log in.`);
+      setUserToDelete(null);
+    } catch (err: any) {
+      toast.error('Failed to delete user: ' + (err.message || 'Error'));
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
 
   const startEdit = (user: any) => {
     setEditingId(user.id);
@@ -439,6 +479,7 @@ export default function Users() {
                         <select className="w-full border border-gray-300 rounded p-1.5 text-sm font-semibold" value={editData.role} onChange={e => setEditData({...editData, role: e.target.value as any})}>
                           <option value="sales_agent">Sales Agent (Commission + Packages)</option>
                           <option value="sales_rep">Sales Rep (Salaried Staff - Unit Price Only)</option>
+                          <option value="store_keeper">Store Keeper</option>
                           <option value="auditor">Auditor</option>
                           <option value="admin">Admin</option>
                         </select>
@@ -537,6 +578,15 @@ export default function Users() {
                               <button onClick={() => startEdit(u)} className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-md transition-colors text-xs font-medium flex items-center gap-1" title="Edit User">
                                 <Edit2 className="w-3.5 h-3.5" /> Edit Role/Tier
                               </button>
+                              {u.username !== 'admin' && u.username !== user?.username && (
+                                <button
+                                  onClick={() => setUserToDelete(u)}
+                                  className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 p-1.5 rounded-md transition-colors text-xs font-semibold flex items-center gap-1"
+                                  title="Delete User Account"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
@@ -704,6 +754,52 @@ export default function Users() {
               >
                 Close Audit Dashboard
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-red-200">
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-red-100 rounded-full text-red-600 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Delete User Account?</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Are you sure you want to delete <strong className="text-gray-900">{userToDelete.name}</strong> (<span className="font-mono text-gray-800">@{userToDelete.username}</span>)?
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 space-y-1">
+                <p>• This user will <strong>immediately lose access</strong> and will <strong>no longer be able to log in</strong>.</p>
+                <p>• Their historical invoices and audit records will remain preserved in the system.</p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeletingUser}
+                  onClick={() => setUserToDelete(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingUser}
+                  onClick={handleConfirmDeleteUser}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isDeletingUser ? 'Deleting...' : 'Delete User'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

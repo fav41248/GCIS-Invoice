@@ -1,6 +1,8 @@
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, browserPopupRedirectResolver } from 'firebase/auth';
 import { auth } from '../firebase';
 import { supabase } from '../supabase';
+import { compressImage } from './imageCompressor';
+import { parseInvoiceProofs, serializeInvoiceProofs } from './proofUtils';
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
@@ -94,8 +96,6 @@ export const getDriveAccessToken = async (): Promise<string | null> => {
   }
   return null;
 };
-
-import { compressImage } from './imageCompressor';
 
 /**
  * Compresses an image file into an ultra-compact WebP data URL (< 50KB)
@@ -263,10 +263,11 @@ export const dataUrlToFile = (dataUrl: string, filename: string): File => {
  */
 export const getPendingSyncCounts = async (): Promise<{ receipts: number; products: number; total: number }> => {
   try {
-    const { data: invs } = await supabase.from('invoices').select('id, proof_of_payment');
+    const { data: invs } = await supabase.from('invoices').select('id, proof_of_payment, proof_of_payment_id, proof_of_payment_name');
     let receipts = 0;
     (invs || []).forEach((inv: any) => {
-      if (inv.proof_of_payment && typeof inv.proof_of_payment === 'string' && inv.proof_of_payment.startsWith('data:')) {
+      const proofs = parseInvoiceProofs(inv);
+      if (proofs.some(p => p.url.startsWith('data:'))) {
         receipts++;
       }
     });
@@ -302,7 +303,8 @@ export const syncAllPendingFilesToDrive = async (
   const { data: invRows } = await supabase.from('invoices').select('*');
   const pendingInvoices: any[] = [];
   (invRows || []).forEach((inv: any) => {
-    if (inv.proof_of_payment && typeof inv.proof_of_payment === 'string' && inv.proof_of_payment.startsWith('data:')) {
+    const proofs = parseInvoiceProofs(inv);
+    if (proofs.some(p => p.url.startsWith('data:'))) {
       pendingInvoices.push(inv);
     }
   });
@@ -328,17 +330,25 @@ export const syncAllPendingFilesToDrive = async (
       onProgress(processed, total, `Invoice ${inv.invoice_number || inv.id}`);
     }
     try {
-      const fileName = inv.proof_of_payment_name || `receipt_${inv.invoice_number || inv.id}.jpg`;
-      const file = dataUrlToFile(inv.proof_of_payment, fileName);
-      const driveRes = await uploadFileToGoogleDrive(file);
-      const link = driveRes.webViewLink || driveRes.thumbnailLink;
-      
-      await supabase.from('invoices').update({
-        proof_of_payment: link,
-        proof_of_payment_id: driveRes.fileId
-      }).eq('id', inv.id);
+      const proofs = parseInvoiceProofs(inv);
+      const updatedProofs = await Promise.all(
+        proofs.map(async (p, idx) => {
+          if (!p.url.startsWith('data:')) return p;
+          const fileName = p.name || `receipt_${inv.invoice_number || inv.id}_${idx + 1}.jpg`;
+          const file = dataUrlToFile(p.url, fileName);
+          const driveRes = await uploadFileToGoogleDrive(file);
+          const link = driveRes.webViewLink || driveRes.thumbnailLink || p.url;
+          return {
+            ...p,
+            url: link,
+            id: driveRes.fileId,
+            name: fileName
+          };
+        })
+      );
 
-
+      const serialized = serializeInvoiceProofs(updatedProofs);
+      await supabase.from('invoices').update(serialized.db).eq('id', inv.id);
 
       synced++;
     } catch (e) {

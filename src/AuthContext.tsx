@@ -80,16 +80,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(false);
 
-  // Sync fresh profile details (including phone number) from DB
+  // Sync fresh profile details (including phone number) and revoke deleted accounts from DB
   useEffect(() => {
     if (!user?.username) return;
+    let cancelled = false;
+
     const syncProfileFromDb = async () => {
       try {
-        const { data: supaUser } = await supabase
+        const { data: supaUser, error: supaErr } = await supabase
           .from('users')
           .select('*')
           .eq('username', user.username)
           .maybeSingle();
+
+        if (cancelled) return;
+
+        // If the account was deleted by an admin, revoke access immediately
+        if (!supaErr && !supaUser && user.username !== 'admin') {
+          setUser(null);
+          try {
+            localStorage.removeItem('gcis_user');
+            localStorage.removeItem('gcis_session_id');
+          } catch {}
+          return;
+        }
 
         if (supaUser) {
           const freshPhone = supaUser.phone || '';
@@ -112,7 +126,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Could not sync user profile from DB:", err);
       }
     };
+
     syncProfileFromDb();
+
+    const handleFocus = () => {
+      syncProfileFromDb();
+    };
+    window.addEventListener('focus', handleFocus);
+    const intervalId = window.setInterval(syncProfileFromDb, 60000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', handleFocus);
+      window.clearInterval(intervalId);
+    };
   }, [user?.username]);
 
   const safeStoreUser = (userData: CustomUser) => {

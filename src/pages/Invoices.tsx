@@ -8,6 +8,7 @@ import { exportToCSV } from '../lib/utils';
 import { processProofOfPayment, googleDriveSignIn, getDriveAccessToken, initDriveAuth } from '../lib/drive';
 import { getWeekInfo } from '../lib/dateUtils';
 import { ProofViewerModal } from '../components/ProofViewerModal';
+import { MAX_PAYMENT_PROOFS, parseInvoiceProofs, serializeInvoiceProofs, ProofItem } from '../lib/proofUtils';
 
 export default function Invoices() {
   const { user, isAdmin, isAuditor, isSalesRep, isSalesAgent, canViewCommission } = useAuth();
@@ -32,7 +33,7 @@ export default function Invoices() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any>(null);
-  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [proofNote, setProofNote] = useState('');
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [viewingProof, setViewingProof] = useState<any>(null);
@@ -217,7 +218,7 @@ export default function Invoices() {
 
   const handleMarkPaidClick = (inv: any) => {
     setSelectedInvoiceForPayment(inv);
-    setProofFile(null);
+    setProofFiles([]);
     setProofNote('');
     setShowPaymentModal(true);
   };
@@ -261,21 +262,41 @@ export default function Invoices() {
     e.preventDefault();
     if (!selectedInvoiceForPayment) return;
 
-    if (!proofFile) {
-      toast.error('Please select a proof of payment file.');
+    if (proofFiles.length === 0) {
+      toast.error('Please select at least one proof of payment file.');
+      return;
+    }
+
+    const existingProofs = parseInvoiceProofs(selectedInvoiceForPayment);
+    if (existingProofs.length + proofFiles.length > MAX_PAYMENT_PROOFS) {
+      toast.error(`Maximum of ${MAX_PAYMENT_PROOFS} proof of payment files allowed per invoice.`);
       return;
     }
 
     setIsSubmittingProof(true);
     try {
-      const result = await processProofOfPayment(proofFile);
+      const uploadedItems: ProofItem[] = [];
+      let usedDrive = false;
+      for (const file of proofFiles) {
+        const result = await processProofOfPayment(file);
+        if (result.storageType === 'drive') usedDrive = true;
+        uploadedItems.push({
+          url: result.url,
+          id: result.id,
+          name: file.name,
+          note: proofNote.trim(),
+          uploadedAt: new Date().toISOString()
+        });
+      }
+
+      const combinedProofs = [...existingProofs, ...uploadedItems].slice(0, MAX_PAYMENT_PROOFS);
+      const serialized = serializeInvoiceProofs(combinedProofs);
+
       const updateData = {
         status: 'paid',
         profit_status: 'confirmed',
-        proof_of_payment: result.url,
-        proof_of_payment_id: result.id,
-        proof_of_payment_name: proofFile.name,
-        proof_note: proofNote
+        ...serialized.db,
+        proof_note: proofNote.trim() || selectedInvoiceForPayment.proofNote || ''
       };
 
       const { error: supaErr } = await supabase
@@ -289,19 +310,17 @@ export default function Invoices() {
         ...inv,
         status: 'paid',
         profitStatus: 'confirmed',
-        proofOfPayment: result.url,
-        proofOfPaymentId: result.id,
-        proofOfPaymentName: proofFile.name,
-        proofNote: proofNote
+        ...serialized.ui,
+        proofNote: updateData.proof_note
       } : inv));
 
-      if (result.storageType === 'drive') {
-        toast.success('Proof uploaded to Company Google Drive & invoice marked as paid!');
+      if (usedDrive) {
+        toast.success(`${uploadedItems.length} proof(s) uploaded to Google Drive & invoice marked as paid!`);
       } else {
-        toast.success('Proof saved securely & invoice marked as paid!');
+        toast.success(`${uploadedItems.length} proof(s) saved securely & invoice marked as paid!`);
       }
       setShowPaymentModal(false);
-      setProofFile(null);
+      setProofFiles([]);
       setProofNote('');
     } catch (error: any) {
       toast.error('Failed to save payment proof: ' + (error.message || 'Error'));
@@ -314,7 +333,61 @@ export default function Invoices() {
     setViewingProof(inv);
   };
 
-  const handleUpdateProof = async (inv: any, file: File | null, note: string) => {
+  const handleAddProofs = async (inv: any, files: File[], note: string) => {
+    if (!inv) return;
+
+    if (!isAdmin && isInvoiceAudited(inv)) {
+      toast.error('Restricted: After a sales rep has been audited, they are restricted from adding payment proofs.');
+      return;
+    }
+
+    const existingProofs = parseInvoiceProofs(inv);
+    if (existingProofs.length + files.length > MAX_PAYMENT_PROOFS) {
+      toast.error(`Maximum of ${MAX_PAYMENT_PROOFS} proofs allowed per invoice.`);
+      return;
+    }
+
+    try {
+      const addedItems: ProofItem[] = [];
+      for (const file of files) {
+        const result = await processProofOfPayment(file);
+        addedItems.push({
+          url: result.url,
+          id: result.id,
+          name: file.name,
+          note: note.trim(),
+          uploadedAt: new Date().toISOString()
+        });
+      }
+
+      const combinedProofs = [...existingProofs, ...addedItems].slice(0, MAX_PAYMENT_PROOFS);
+      const serialized = serializeInvoiceProofs(combinedProofs);
+
+      const updatePayload: any = {
+        ...serialized.db
+      };
+      if (!inv.proofNote && note.trim()) {
+        updatePayload.proof_note = note.trim();
+      }
+
+      const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
+      if (error) throw error;
+
+      const updatedInv = {
+        ...inv,
+        ...serialized.ui,
+        proofNote: updatePayload.proof_note ?? inv.proofNote
+      };
+      setViewingProof(updatedInv);
+      setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
+      toast.success(`Added ${addedItems.length} payment proof${addedItems.length > 1 ? 's' : ''} (${combinedProofs.length}/${MAX_PAYMENT_PROOFS})!`);
+    } catch (err: any) {
+      toast.error('Failed to add proof: ' + (err.message || 'Error'));
+      throw err;
+    }
+  };
+
+  const handleUpdateProof = async (inv: any, file: File | null, note: string, proofIndex = 0) => {
     if (!inv) return;
 
     if (!isAdmin && isInvoiceAudited(inv)) {
@@ -323,28 +396,40 @@ export default function Invoices() {
     }
 
     try {
-      const updatePayload: any = {
-        proof_note: note.trim()
-      };
+      const existingProofs = parseInvoiceProofs(inv);
+      const updatedProofs = [...existingProofs];
 
       if (file) {
         const result = await processProofOfPayment(file);
-        updatePayload.proof_of_payment = result.url;
-        updatePayload.proof_of_payment_id = result.id;
-        updatePayload.proof_of_payment_name = file.name;
+        const target = updatedProofs[proofIndex] || { url: '', name: '' };
+        updatedProofs[proofIndex] = {
+          ...target,
+          url: result.url,
+          id: result.id,
+          name: file.name,
+          note: note.trim(),
+          uploadedAt: new Date().toISOString()
+        };
+      } else if (updatedProofs[proofIndex]) {
+        updatedProofs[proofIndex] = {
+          ...updatedProofs[proofIndex],
+          note: note.trim()
+        };
       }
+
+      const serialized = serializeInvoiceProofs(updatedProofs);
+      const updatePayload: any = {
+        ...serialized.db,
+        ...(updatedProofs.length <= 1 || proofIndex === 0 ? { proof_note: note.trim() } : {})
+      };
 
       const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
       if (error) throw error;
       
       const updatedProof = {
         ...inv,
-        proofNote: note.trim(),
-        ...(file ? {
-          proofOfPayment: updatePayload.proof_of_payment,
-          proofOfPaymentId: updatePayload.proof_of_payment_id,
-          proofOfPaymentName: updatePayload.proof_of_payment_name
-        } : {})
+        ...serialized.ui,
+        proofNote: updatedProofs.length <= 1 || proofIndex === 0 ? note.trim() : inv.proofNote
       };
       setViewingProof(updatedProof);
       setInvoices(prev => prev.map(i => i.id === inv.id ? updatedProof : i));
@@ -355,7 +440,7 @@ export default function Invoices() {
     }
   };
 
-  const handleDeleteProof = async (inv: any, markAsUnpaid = false) => {
+  const handleDeleteProof = async (inv: any, markAsUnpaid = false, proofIndex?: number) => {
     if (!inv) return;
 
     if (!isAdmin && isInvoiceAudited(inv)) {
@@ -364,11 +449,17 @@ export default function Invoices() {
     }
 
     try {
+      const existingProofs = parseInvoiceProofs(inv);
+      let remainingProofs: ProofItem[] = [];
+
+      if (proofIndex !== undefined && existingProofs.length > 1 && !markAsUnpaid) {
+        remainingProofs = existingProofs.filter((_, idx) => idx !== proofIndex);
+      }
+
+      const serialized = serializeInvoiceProofs(remainingProofs);
       const updatePayload: any = {
-        proof_of_payment: '',
-        proof_of_payment_id: '',
-        proof_of_payment_name: '',
-        proof_note: ''
+        ...serialized.db,
+        ...(remainingProofs.length === 0 ? { proof_note: '' } : {})
       };
 
       if (markAsUnpaid) {
@@ -379,17 +470,22 @@ export default function Invoices() {
       const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id);
       if (error) throw error;
       
-      setInvoices(prev => prev.map(i => i.id === inv.id ? {
-        ...i,
-        proofOfPayment: '',
-        proofOfPaymentId: '',
-        proofOfPaymentName: '',
-        proofNote: '',
+      const updatedInv = {
+        ...inv,
+        ...serialized.ui,
+        ...(remainingProofs.length === 0 ? { proofNote: '' } : {}),
         ...(markAsUnpaid ? { status: 'unpaid', profitStatus: 'unpaid' } : {})
-      } : i));
+      };
 
-      toast.success(markAsUnpaid ? 'Proof deleted and invoice marked as unpaid.' : 'Proof of payment deleted.');
-      setViewingProof(null);
+      setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
+
+      if (remainingProofs.length > 0) {
+        setViewingProof(updatedInv);
+        toast.success(`Proof #${(proofIndex ?? 0) + 1} removed.`);
+      } else {
+        toast.success(markAsUnpaid ? 'Proof deleted and invoice marked as unpaid.' : 'Proof of payment deleted.');
+        setViewingProof(null);
+      }
     } catch (err: any) {
       toast.error('Failed to delete proof: ' + (err.message || 'Error'));
       throw err;
@@ -754,21 +850,30 @@ export default function Invoices() {
                           <Link to={`/receipt/${inv.id}`} className="inline-block text-sm bg-green-100 text-green-800 px-3 py-1 rounded hover:bg-green-200 transition-colors font-semibold whitespace-nowrap">
                             Receipt
                           </Link>
-                          {inv.proofOfPayment ? (
-                            <button
-                              onClick={() => openProofModal(inv)}
-                              className="text-sm bg-blue-50 text-blue-700 px-2.5 py-1 rounded border border-blue-200 hover:bg-blue-100 transition-colors font-medium whitespace-nowrap"
-                            >
-                              View Proof
-                            </button>
-                          ) : (isAdmin || (inv.createdBy === user?.username && !isInvoiceAudited(inv))) ? (
-                            <button
-                              onClick={() => handleMarkPaidClick(inv)}
-                              className="text-sm bg-amber-50 text-amber-700 px-2.5 py-1 rounded border border-amber-200 hover:bg-amber-100 transition-colors font-medium whitespace-nowrap"
-                            >
-                              + Add Proof
-                            </button>
-                          ) : null}
+                          {(() => {
+                            const proofCount = parseInvoiceProofs(inv).length;
+                            if (proofCount > 0) {
+                              return (
+                                <button
+                                  onClick={() => openProofModal(inv)}
+                                  className="text-sm bg-blue-50 text-blue-700 px-2.5 py-1 rounded border border-blue-200 hover:bg-blue-100 transition-colors font-medium whitespace-nowrap"
+                                >
+                                  {proofCount > 1 ? `View Proofs (${proofCount}/3)` : 'View Proof'}
+                                </button>
+                              );
+                            }
+                            if (isAdmin || (inv.createdBy === user?.username && !isInvoiceAudited(inv))) {
+                              return (
+                                <button
+                                  onClick={() => handleMarkPaidClick(inv)}
+                                  className="text-sm bg-amber-50 text-amber-700 px-2.5 py-1 rounded border border-amber-200 hover:bg-amber-100 transition-colors font-medium whitespace-nowrap"
+                                >
+                                  + Add Proof
+                                </button>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       ) : null}
                       
@@ -870,24 +975,65 @@ export default function Invoices() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900">Upload Proof of Payment</h3>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Upload Proof of Payment</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Up to {MAX_PAYMENT_PROOFS} files supported for installment / bit payments</p>
+              </div>
               <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handlePaymentProofSubmit} className="p-6 space-y-4">
               <p className="text-sm text-gray-600">
-                Please upload proof of payment (receipt screenshot or transfer confirmation) for invoice <span className="font-semibold">{selectedInvoiceForPayment?.invoiceNumber}</span>.
+                Upload proof of payment (receipt screenshots or transfer confirmations) for invoice <span className="font-semibold">{selectedInvoiceForPayment?.invoiceNumber}</span>. You can add up to <strong>{MAX_PAYMENT_PROOFS}</strong> proofs.
               </p>
               <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Proof File (Image / PDF)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-gray-600 uppercase">Proof Files (Image / PDF)</label>
+                  <span className="text-[11px] font-semibold text-[#0F5132]">{proofFiles.length} / {MAX_PAYMENT_PROOFS} selected</span>
+                </div>
                 <input 
                   type="file" 
-                  required
+                  multiple
+                  disabled={proofFiles.length >= MAX_PAYMENT_PROOFS}
                   accept="image/*,application/pdf"
-                  onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                  className="w-full text-sm border border-gray-300 rounded p-2 text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#0F5132] file:text-white hover:file:bg-[#198754]"
+                  onChange={(e) => {
+                    const picked = Array.from(e.target.files || []);
+                    if (picked.length === 0) return;
+                    const combined = [...proofFiles, ...picked];
+                    if (combined.length > MAX_PAYMENT_PROOFS) {
+                      toast.error(`Maximum of ${MAX_PAYMENT_PROOFS} proof uploads allowed.`);
+                      setProofFiles(combined.slice(0, MAX_PAYMENT_PROOFS));
+                    } else {
+                      setProofFiles(combined);
+                    }
+                    e.target.value = '';
+                  }}
+                  className="w-full text-sm border border-gray-300 rounded p-2 text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#0F5132] file:text-white hover:file:bg-[#198754] disabled:opacity-50"
                 />
+                {proofFiles.length > 0 && (
+                  <div className="mt-2.5 space-y-1.5">
+                    {proofFiles.map((file, idx) => (
+                      <div key={`${file.name}-${idx}`} className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded px-3 py-1.5 text-xs">
+                        <span className="font-medium text-emerald-950 truncate pr-2">
+                          Proof #{idx + 1}: {file.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setProofFiles(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-red-600 hover:text-red-800 font-bold shrink-0"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {proofFiles.length < MAX_PAYMENT_PROOFS && proofFiles.length > 0 && (
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    Need to attach another installment receipt? Select another file above ({MAX_PAYMENT_PROOFS - proofFiles.length} slot{MAX_PAYMENT_PROOFS - proofFiles.length === 1 ? '' : 's'} left).
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Payment Reference / Notes (Optional)</label>
@@ -895,7 +1041,7 @@ export default function Invoices() {
                   type="text" 
                   value={proofNote}
                   onChange={(e) => setProofNote(e.target.value)}
-                  placeholder="e.g. Bank Transfer Ref: TRF12345678"
+                  placeholder="e.g. Paid in 2 transfers: Ref TRF123 & TRF456"
                   className="w-full border border-gray-300 rounded p-2 text-sm outline-none focus:border-[#0F5132]"
                 />
               </div>
@@ -909,10 +1055,10 @@ export default function Invoices() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingProof}
+                  disabled={isSubmittingProof || proofFiles.length === 0}
                   className="px-4 py-2 text-sm bg-[#0F5132] text-white rounded-md font-semibold hover:bg-[#198754] transition-colors disabled:opacity-50"
                 >
-                  {isSubmittingProof ? 'Uploading...' : 'Confirm & Mark Paid'}
+                  {isSubmittingProof ? 'Uploading...' : `Confirm & Mark Paid (${proofFiles.length})`}
                 </button>
               </div>
             </form>
@@ -930,6 +1076,7 @@ export default function Invoices() {
         currentUsername={user?.username}
         isAudited={viewingProof ? isInvoiceAudited(viewingProof) : false}
         onToggleVerified={handleToggleVerified}
+        onAddProofs={handleAddProofs}
         onUpdateProof={handleUpdateProof}
         onDeleteProof={handleDeleteProof}
       />
