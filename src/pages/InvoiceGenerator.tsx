@@ -248,19 +248,85 @@ export default function InvoiceGenerator() {
       try {
         if (!user) return;
 
-        // 1. Fetch clients from Supabase
-        const { data: supaClients } = await supabase
-          .from('clients')
-          .select('*')
-          .order('name', { ascending: true });
+        // 1. Fetch clients, client_creators mapping, and user's invoices from Supabase
+        const myUsername = (user.username || '').toLowerCase().trim();
+        const [clientsRes, creatorsRes, userInvoicesRes] = await Promise.all([
+          supabase.from('clients').select('*').order('name', { ascending: true }),
+          supabase.from('settings').select('value').eq('key', 'client_creators').maybeSingle(),
+          isAdmin
+            ? Promise.resolve({ data: [] as any[] })
+            : supabase
+                .from('invoices')
+                .select('client_id, client_name, client_address, client_phone, client_email, created_by, created_at')
+                .eq('created_by', user.username)
+                .order('created_at', { ascending: true })
+        ]);
 
-        const fetchedClients = supaClients || [];
-        setClients(fetchedClients);
+        const registeredClients = clientsRes.data || [];
+        const storedCreators: Record<string, string> = creatorsRes.data?.value || {};
+        const userInvoices = userInvoicesRes.data || [];
+
+        let availableClients: any[] = [];
+
+        if (isAdmin) {
+          availableClients = registeredClients;
+        } else {
+          const userClientsMap = new Map<string, any>();
+
+          // A. Clients explicitly registered/assigned to this user
+          registeredClients.forEach((c: any) => {
+            const owner = (storedCreators[c.id] || '').toLowerCase().trim();
+            if (owner === myUsername) {
+              const key = (c.name || '').trim().toLowerCase();
+              if (key) {
+                userClientsMap.set(key, {
+                  ...c,
+                  createdBy: myUsername
+                });
+              }
+            }
+          });
+
+          // B. Clients from invoices previously created by this user
+          userInvoices.forEach((inv: any) => {
+            const key = (inv.client_name || '').trim().toLowerCase();
+            if (!key) return;
+
+            const existing = userClientsMap.get(key);
+            if (existing) {
+              if (!existing.phone && inv.client_phone) existing.phone = inv.client_phone;
+              if (!existing.address && inv.client_address) existing.address = inv.client_address;
+              if (!existing.email && inv.client_email) existing.email = inv.client_email;
+            } else {
+              const matchingReg = registeredClients.find((c: any) => {
+                const cOwner = (storedCreators[c.id] || '').toLowerCase().trim();
+                const nameMatch = (c.name || '').trim().toLowerCase() === key;
+                return nameMatch && (!cOwner || cOwner === myUsername);
+              });
+
+              userClientsMap.set(key, {
+                id: matchingReg?.id || `client_inv_${key.replace(/[^a-z0-9]/g, '_')}`,
+                name: matchingReg?.name || inv.client_name,
+                email: matchingReg?.email || inv.client_email || '',
+                phone: matchingReg?.phone || inv.client_phone || '',
+                address: matchingReg?.address || inv.client_address || '',
+                created_at: matchingReg?.created_at || inv.created_at,
+                createdBy: myUsername
+              });
+            }
+          });
+
+          availableClients = Array.from(userClientsMap.values()).sort((a, b) =>
+            (a.name || '').localeCompare(b.name || '')
+          );
+        }
+
+        setClients(availableClients);
 
         // Pre-select client if passed via URL (only if not editing)
         const preselectedClientId = searchParams.get('clientId');
         if (preselectedClientId && !editId) {
-          const matched = fetchedClients.find((c: any) => c.id === preselectedClientId);
+          const matched = availableClients.find((c: any) => c.id === preselectedClientId);
           if (matched) {
             setSelectedClientId(matched.id);
             setBillTo(matched.name || '');
@@ -569,34 +635,82 @@ export default function InvoiceGenerator() {
       const wholesaleTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.wholesaleTotal || 0), 0);
       const profitTotal = isRep ? 0 : itemsWithWholesale.reduce((acc, item) => acc + (item.profit || 0), 0);
 
-      // Ensure client is automatically added to this sales agent/rep's client list
+      // Ensure client is automatically added to this user's own saved client list
       let finalClientId = selectedClientId;
       const trimmedClientName = billTo.trim();
+      const myUsername = (user?.username || 'admin').toLowerCase().trim();
 
       try {
-        const { data: clientMatches } = await supabase
-          .from('clients')
-          .select('id, name')
-          .ilike('name', trimmedClientName)
-          .limit(1);
+        const [{ data: clientMatches }, { data: creatorsSetting }] = await Promise.all([
+          supabase
+            .from('clients')
+            .select('id, name')
+            .ilike('name', trimmedClientName),
+          supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'client_creators')
+            .maybeSingle()
+        ]);
 
-        if (clientMatches && clientMatches.length > 0) {
-          finalClientId = clientMatches[0].id;
+        const latestCreators: Record<string, string> = { ...(creatorsSetting?.value || {}) };
+        const selectedClientObj = clients.find(c => c.id === selectedClientId);
+        const selectedStillMatchesName =
+          selectedClientObj &&
+          !selectedClientObj.id.startsWith('client_inv_') &&
+          (selectedClientObj.name || '').trim().toLowerCase() === trimmedClientName.toLowerCase();
+
+        // Match only a registered client belonging to this user (or any match for admin)
+        const ownedMatch = selectedStillMatchesName
+          ? { id: selectedClientObj.id, name: selectedClientObj.name }
+          : (clientMatches || []).find((m: any) => {
+              const owner = (latestCreators[m.id] || '').toLowerCase().trim();
+              return isAdmin ? true : owner === myUsername;
+            });
+
+        if (ownedMatch) {
+          finalClientId = ownedMatch.id;
           if (billToPhone.trim() || billToAddress.trim()) {
             await supabase.from('clients').update({
               ...(billToPhone.trim() ? { phone: billToPhone.trim() } : {}),
               ...(billToAddress.trim() ? { address: billToAddress.trim() } : {})
             }).eq('id', finalClientId);
           }
+          if (!latestCreators[finalClientId]) {
+            latestCreators[finalClientId] = myUsername;
+            await supabase.from('settings').upsert({
+              key: 'client_creators',
+              value: latestCreators,
+              updated_at: new Date().toISOString()
+            });
+          }
         } else {
           finalClientId = `client_${Date.now()}`;
-          await supabase.from('clients').insert({
+          const newClientRow = {
             id: finalClientId,
             name: trimmedClientName,
             address: billToAddress.trim() || '',
             phone: billToPhone.trim() || '',
             email: ''
+          };
+          await supabase.from('clients').insert(newClientRow);
+
+          latestCreators[finalClientId] = myUsername;
+          await supabase.from('settings').upsert({
+            key: 'client_creators',
+            value: latestCreators,
+            updated_at: new Date().toISOString()
           });
+
+          setClients(prev => {
+            const withoutSynthetic = prev.filter(
+              c => (c.name || '').trim().toLowerCase() !== trimmedClientName.toLowerCase()
+            );
+            return [...withoutSynthetic, { ...newClientRow, createdBy: myUsername }].sort((a, b) =>
+              (a.name || '').localeCompare(b.name || '')
+            );
+          });
+          setSelectedClientId(finalClientId);
         }
       } catch (clientErr) {
         console.warn("Could not auto-register client in Supabase:", clientErr);
