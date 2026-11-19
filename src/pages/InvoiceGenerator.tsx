@@ -95,7 +95,7 @@ export default function InvoiceGenerator() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [manualItems, setManualItems] = useState<any[]>([]);
   const [manualDesc, setManualDesc] = useState('');
-  const [manualQty, setManualQty] = useState(1);
+  const [manualQty, setManualQty] = useState(0);
   const [manualPrice, setManualPrice] = useState('');
 
   const [itemOverrides, setItemOverrides] = useState<Record<string, {description?: string, qty?: number, price?: number}>>({});
@@ -587,6 +587,11 @@ export default function InvoiceGenerator() {
       return false;
     }
 
+    if (allItems.some(item => !item.qty || item.qty <= 0)) {
+      toast.error('Please enter a quantity greater than 0 for all items.');
+      return false;
+    }
+
     const isRep = isSalesRep || user?.role === 'sales_rep';
     if (!isRep && user?.role !== 'admin') {
       for (const item of allItems) {
@@ -902,7 +907,6 @@ export default function InvoiceGenerator() {
                           }
                           setManualDesc(p.name);
                           setManualPrice(p.price.toString());
-                          if (!manualQty || manualQty <= 0) setManualQty(1);
                           setProductSearch('');
                           setShowProductDropdown(false);
                         }}
@@ -946,7 +950,16 @@ export default function InvoiceGenerator() {
               </div>
               <div className='col-span-4'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Qty</label>
-                <input type='number' min="1" className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]' value={manualQty} onChange={(e) => setManualQty(Math.max(1, parseInt(e.target.value) || 1))} />
+                <input
+                  type='number'
+                  min="0"
+                  className='w-full p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754]'
+                  value={manualQty}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setManualQty(Number.isNaN(parsed) ? 0 : Math.max(0, parsed));
+                  }}
+                />
               </div>
               <div className='col-span-8'>
                 <label className='block text-[10px] font-bold text-gray-500 uppercase mb-1'>Unit Price</label>
@@ -956,11 +969,15 @@ export default function InvoiceGenerator() {
             <button 
               onClick={() => {
                 if (!manualDesc) return;
-                const qty = manualQty > 0 ? manualQty : 1;
+                if (!manualQty || manualQty <= 0) {
+                  toast.error('Please enter a quantity greater than 0.');
+                  return;
+                }
+                const qty = manualQty;
                 const price = parseFloat(manualPrice) || 0;
                 setManualItems([...manualItems, { id: `m-${Date.now()}`, qty: qty, description: manualDesc, price: price, total: qty * price, isManual: true }]);
                 setManualDesc('');
-                setManualQty(1);
+                setManualQty(0);
                 setManualPrice('');
               }}
               disabled={!manualDesc}
@@ -1250,9 +1267,12 @@ export default function InvoiceGenerator() {
                       ) : (
                         <input 
                           type="number"
-                          min="1"
+                          min="0"
                           value={item.qty}
-                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
+                          onChange={(e) => {
+                            const parsed = parseInt(e.target.value, 10);
+                            setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: Number.isNaN(parsed) ? 0 : Math.max(0, parsed) } }));
+                          }}
                           className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
@@ -1486,9 +1506,12 @@ export default function InvoiceGenerator() {
                       ) : (
                         <input 
                           type="number"
-                          min="1"
+                          min="0"
                           value={item.qty}
-                          onChange={(e) => setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: parseInt(e.target.value) || 1 } }))}
+                          onChange={(e) => {
+                            const parsed = parseInt(e.target.value, 10);
+                            setItemOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], qty: Number.isNaN(parsed) ? 0 : Math.max(0, parsed) } }));
+                          }}
                           className="w-16 bg-transparent border border-transparent hover:border-gray-200 focus:border-transparent p-1 focus:ring-2 focus:border-[#0F5132] focus:ring-1 focus:ring-[#198754] focus:bg-white rounded outline-none text-center font-medium transition-all print:p-0 print:overflow-visible print:block print:m-0 print:border-none"
                         />
                       )}
